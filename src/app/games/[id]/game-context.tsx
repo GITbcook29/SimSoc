@@ -123,54 +123,98 @@ export function GameProvider({
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2400);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [{ data: g }, { data: parts }, { data: headRows }, { data: roundRows }] =
-      await Promise.all([
-        supabase.from("games").select("*").eq("id", gameId).single(),
-        supabase.from("participants").select("*").eq("game_id", gameId).order("name"),
-        supabase.from("game_heads").select("*").eq("game_id", gameId),
-        supabase.from("rounds").select("*").eq("game_id", gameId).order("round_no"),
-      ]);
+  const fetchAll = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      const [{ data: g }, { data: parts }, { data: headRows }, { data: roundRows }] =
+        await Promise.all([
+          supabase.from("games").select("*").eq("id", gameId).single(),
+          supabase.from("participants").select("*").eq("game_id", gameId).order("name"),
+          supabase.from("game_heads").select("*").eq("game_id", gameId),
+          supabase.from("rounds").select("*").eq("game_id", gameId).order("round_no"),
+        ]);
 
-    if (g) setGame(g as Game);
-    setParticipants((parts ?? []) as Participant[]);
+      if (g) setGame(g as Game);
+      setParticipants((parts ?? []) as Participant[]);
 
-    const headMap: GameHeads = {};
-    for (const h of headRows ?? []) headMap[h.role as HeadRole] = h.participant_id;
-    setHeads(headMap);
+      const headMap: GameHeads = {};
+      for (const h of headRows ?? []) headMap[h.role as HeadRole] = h.participant_id;
+      setHeads(headMap);
 
-    const roundMap: Record<number, Round> = {};
-    for (const r of roundRows ?? []) roundMap[r.round_no] = r as Round;
+      const roundMap: Record<number, Round> = {};
+      for (const r of roundRows ?? []) roundMap[r.round_no] = r as Round;
 
-    // Ensure round 1 always exists.
-    if (!roundMap[1]) {
-      const id = crypto.randomUUID();
-      const newRound: Round = {
-        id,
-        game_id: gameId,
-        round_no: 1,
-        inputs: defaultInputs(),
-        results: null,
-        closed: false,
-      };
-      await supabase.from("rounds").insert({
-        id,
-        game_id: gameId,
-        round_no: 1,
-        inputs: newRound.inputs,
-        results: null,
-        closed: false,
-      });
-      roundMap[1] = newRound;
-    }
-    setRounds(roundMap);
-    setLoading(false);
-  }, [gameId, supabase]);
+      // Ensure round 1 always exists.
+      if (!roundMap[1]) {
+        const id = crypto.randomUUID();
+        const newRound: Round = {
+          id,
+          game_id: gameId,
+          round_no: 1,
+          inputs: defaultInputs(),
+          results: null,
+          closed: false,
+        };
+        await supabase.from("rounds").insert({
+          id,
+          game_id: gameId,
+          round_no: 1,
+          inputs: newRound.inputs,
+          results: null,
+          closed: false,
+        });
+        roundMap[1] = newRound;
+      }
+      roundsRef.current = roundMap;
+      setRounds(roundMap);
+      if (!opts?.silent) setLoading(false);
+    },
+    [gameId, supabase]
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    fetchAll();
+  }, [fetchAll]);
+
+  // Realtime: any change to this game's rows (from another coordinator's tab, or
+  // this one) triggers a silent refetch so everyone stays in sync without a manual
+  // reload. Debounced since closing a session touches multiple tables at once.
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => fetchAll({ silent: true }), 400);
+    };
+
+    const channel = supabase
+      .channel(`game-${gameId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "games", filter: `id=eq.${gameId}` },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "participants", filter: `game_id=eq.${gameId}` },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game_heads", filter: `game_id=eq.${gameId}` },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rounds", filter: `game_id=eq.${gameId}` },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [gameId, supabase, fetchAll]);
 
   const currentRound = game.current_round;
   const level = currentLevel(
