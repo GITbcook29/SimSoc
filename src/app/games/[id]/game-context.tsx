@@ -118,6 +118,21 @@ export function GameProvider({
   // to arrive — not the last one sent — wins.
   const roundWriteQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
+  // Same rationale as roundsRef: patchParticipantSession needs to read the
+  // just-computed per-participant sessions patch synchronously to send to Supabase,
+  // and reading it back out of a setParticipants updater's closure isn't reliably
+  // synchronous — that silently sent `sessions: {}` (wiping the row) for any
+  // participant whose update didn't win the race, which in practice meant only the
+  // first roster row's attendance clicks ever persisted.
+  const participantsRef = useRef(participants);
+  useEffect(() => {
+    participantsRef.current = participants;
+  }, [participants]);
+
+  // Serializes writes per participant id so rapid clicks on the same row's status
+  // buttons land in order.
+  const participantWriteQueueRef = useRef<Map<string, Promise<unknown>>>(new Map());
+
   const toast = useCallback((text: string) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, text }]);
@@ -366,22 +381,29 @@ export function GameProvider({
   // ---- session marks ----
   const patchParticipantSession = useCallback(
     async (id: string, round: number, patch: Record<string, unknown>) => {
-      let updatedSessions: Participant["sessions"] = {};
-      setParticipants((ps) =>
-        ps.map((p) => {
-          if (p.id !== id) return p;
-          updatedSessions = {
-            ...p.sessions,
-            [String(round)]: { ...p.sessions[String(round)], ...patch },
-          };
-          return { ...p, sessions: updatedSessions };
-        })
+      const p = participantsRef.current.find((x) => x.id === id);
+      if (!p) return;
+      const updatedSessions: Participant["sessions"] = {
+        ...p.sessions,
+        [String(round)]: { ...p.sessions[String(round)], ...patch },
+      };
+
+      participantsRef.current = participantsRef.current.map((x) =>
+        x.id === id ? { ...x, sessions: updatedSessions } : x
       );
-      const { error } = await supabase
-        .from("participants")
-        .update({ sessions: updatedSessions })
-        .eq("id", id);
-      if (error) toast("Error: " + error.message);
+      setParticipants(participantsRef.current);
+
+      const write = async () => {
+        const { error } = await supabase
+          .from("participants")
+          .update({ sessions: updatedSessions })
+          .eq("id", id);
+        if (error) toast("Error: " + error.message);
+      };
+      const prev = participantWriteQueueRef.current.get(id) ?? Promise.resolve();
+      const next = prev.then(write, write);
+      participantWriteQueueRef.current.set(id, next);
+      await next;
     },
     [supabase, toast]
   );
