@@ -19,7 +19,8 @@ export async function createGame(formData: FormData) {
   // inserted within the same statement, so RETURNING intermittently 403s here
   // even though the plain insert is allowed.
   const id = crypto.randomUUID();
-  const { error } = await supabase.from("games").insert({ id, name, owner_id: user.id });
+  const config = { numSessions: 8, lockLevel: true, lockedLevel: null, sessionSort: "roster" };
+  const { error } = await supabase.from("games").insert({ id, name, owner_id: user.id, config });
 
   if (error) throw error;
   revalidatePath("/games");
