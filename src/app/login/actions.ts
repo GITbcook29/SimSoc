@@ -27,13 +27,18 @@ export async function signUp(formData: FormData) {
   const password = formData.get("password") as string;
   const origin = await siteOrigin();
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: { emailRedirectTo: `${origin}/auth/confirm` },
   });
   if (error) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // Confirmation disabled in Supabase -> signUp already returns an active session.
+  if (data.session) {
+    redirect("/games");
   }
   redirect(`/login?message=${encodeURIComponent("Check your email to confirm your account, then sign in.")}`);
 }

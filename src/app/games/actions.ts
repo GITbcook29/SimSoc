@@ -14,15 +14,16 @@ export async function createGame(formData: FormData) {
   const name = (formData.get("name") as string)?.trim();
   if (!name) return;
 
-  const { data, error } = await supabase
-    .from("games")
-    .insert({ name, owner_id: user.id })
-    .select("id")
-    .single();
+  // Generate the id client-side and skip `.select()` (RETURNING): Postgres RLS
+  // can't reliably apply a self-referencing SELECT policy to a row still being
+  // inserted within the same statement, so RETURNING intermittently 403s here
+  // even though the plain insert is allowed.
+  const id = crypto.randomUUID();
+  const { error } = await supabase.from("games").insert({ id, name, owner_id: user.id });
 
   if (error) throw error;
   revalidatePath("/games");
-  redirect(`/games/${data.id}/setup`);
+  redirect(`/games/${id}/setup`);
 }
 
 export async function inviteToGame(gameId: string, formData: FormData) {
