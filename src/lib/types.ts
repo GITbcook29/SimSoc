@@ -151,4 +151,5 @@ export type Game = {
   owner_id: string;
   config: GameConfig;
   current_round: number;
+  status_share_token: string;
 };

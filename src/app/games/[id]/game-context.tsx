@@ -64,6 +64,7 @@ type GameContextValue = {
   autoRegions: () => Promise<void>;
   setHead: (role: HeadRole, participantId: string | null) => Promise<void>;
   setConfig: (patch: Partial<Game["config"]>) => Promise<void>;
+  regenerateShareLink: () => Promise<void>;
   setStatus: (id: string, code: "P" | "A" | "E" | "D") => Promise<void>;
   setFlag: (id: string, flag: "ns" | "lux" | "ptc") => Promise<void>;
   setInput: <K extends keyof RoundInputs>(key: K, value: RoundInputs[K]) => Promise<void>;
@@ -354,6 +355,14 @@ export function GameProvider({
     [currentRound, game.config, gameId, participants, supabase, toast]
   );
 
+  const regenerateShareLink = useCallback(async () => {
+    const token = crypto.randomUUID();
+    setGame((g) => ({ ...g, status_share_token: token }));
+    const { error } = await supabase.from("games").update({ status_share_token: token }).eq("id", gameId);
+    if (error) toast("Error: " + error.message);
+    else toast("Share link regenerated — old link no longer works");
+  }, [gameId, supabase, toast]);
+
   // ---- session marks ----
   const patchParticipantSession = useCallback(
     async (id: string, round: number, patch: Record<string, unknown>) => {
@@ -570,6 +579,7 @@ export function GameProvider({
     autoRegions,
     setHead,
     setConfig,
+    regenerateShareLink,
     setStatus,
     setFlag,
     setInput,
