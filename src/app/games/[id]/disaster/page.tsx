@@ -180,12 +180,12 @@ export default function DisasterPage() {
         />
         <div className="mt-3">
           {disActive(D) ? (
-            <div className="text-xs bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2">
+            <div className="text-xs bg-amber-500/10 border border-amber-500/40 text-amber-100 rounded px-3 py-2">
               🌀 <b>{D.title || "Unnamed disaster"}</b> armed for Session {currentRound}. Net indicator impact:{" "}
               {disEffectText(D) || "none"}. It will apply when you close this session.
             </div>
           ) : (
-            <div className="text-xs bg-green-50 border border-green-300 text-green-800 rounded px-3 py-2">
+            <div className="text-xs bg-emerald-500/10 border border-emerald-500/40 text-emerald-200 rounded px-3 py-2">
               No disaster armed for Session {currentRound}.
             </div>
           )}

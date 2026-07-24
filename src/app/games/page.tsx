@@ -47,7 +47,7 @@ export default async function GamesPage() {
           placeholder="New game name, e.g. Fall 2026 Section A"
           className="flex-1 border rounded px-3 py-2 text-sm"
         />
-        <button type="submit" className="bg-black text-white rounded px-4 py-2 text-sm font-medium">
+        <button type="submit" className="bg-[var(--accent)] text-[var(--accent-ink)] rounded px-4 py-2 text-sm font-semibold hover:brightness-110">
           New game
         </button>
       </form>
@@ -61,7 +61,7 @@ export default async function GamesPage() {
           const isOwner = game.owner_id === user?.id;
           const invites = invitesByGame.get(game.id) ?? [];
           return (
-            <div key={game.id} className="border rounded-lg p-4 space-y-3">
+            <div key={game.id} className="border rounded-lg p-4 space-y-3 bg-[var(--panel)]">
               <div className="flex items-center justify-between">
                 <div>
                   <Link href={`/games/${game.id}/setup`} className="font-medium hover:underline">

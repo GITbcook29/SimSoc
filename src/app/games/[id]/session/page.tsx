@@ -86,7 +86,7 @@ export default function SessionPage() {
             luxury living · <b>PTC</b> = Private Transportation Certificate.
           </p>
           {nsWarn.length > 0 && (
-            <div className="text-xs bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 mb-2">
+            <div className="text-xs bg-amber-500/10 border border-amber-500/40 text-amber-100 rounded px-3 py-2 mb-2">
               ⚠ Second consecutive session without subsistence: <b>{nsWarn.join(", ")}</b> — per the rules they die
               at the end of this session (mark <b>D</b>).
             </div>
@@ -210,7 +210,7 @@ export default function SessionPage() {
       </div>
 
       <div className="mt-4 flex items-center gap-3">
-        <button onClick={handleClose} className="bg-black text-white rounded px-5 py-2.5 text-sm font-semibold">
+        <button onClick={handleClose} className="bg-[var(--accent)] text-[var(--accent-ink)] rounded-lg px-5 py-2.5 text-sm font-semibold hover:brightness-110">
           Close Session &amp; Calculate →
         </button>
         <span className="text-xs text-neutral-400 italic">
@@ -226,7 +226,9 @@ function FlagBtn({ on, onClick, label }: { on: boolean; onClick: () => void; lab
     <button
       onClick={onClick}
       className={`text-[10px] rounded border px-1.5 py-0.5 ${
-        on ? "bg-amber-300 border-amber-300" : "bg-neutral-50 border-neutral-200 text-neutral-500"
+        on
+          ? "bg-amber-500/20 border-amber-400 text-amber-300"
+          : "bg-neutral-50 border-neutral-200 text-neutral-500"
       }`}
     >
       {label}

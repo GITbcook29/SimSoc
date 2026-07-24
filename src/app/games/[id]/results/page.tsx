@@ -74,18 +74,20 @@ export default function ResultsPage() {
     const darr = d > 0 ? "▲" : d < 0 ? "▼" : "—";
     const w = Math.max(0, Math.min(100, (v / MAX) * 100));
     return (
-      <div key={k} className={`border rounded-lg p-3 ${cls}`}>
-        <div className="flex justify-between items-baseline text-xs">
-          <span className="font-bold text-neutral-500">
-            {k} · {NAMES[k]}
-          </span>
-          <span className={`font-semibold ${dcls}`}>
-            {darr} {d === 0 ? "0" : Math.abs(d)}
-          </span>
+      <div key={k} className={`border rounded-xl p-3 text-center bg-[var(--inset)] ${cls}`}>
+        <div className="text-[10.5px] font-semibold uppercase tracking-wide text-neutral-500 min-h-[26px]">
+          {k} · {NAMES[k]}
         </div>
-        <div className={TYPE.kpi}>{fmt(v)}</div>
-        <div className="h-3 bg-neutral-100 rounded-full mt-2 overflow-hidden">
-          <div className="h-full bg-current rounded-full" style={{ width: `${w}%` }} />
+        <div
+          className="relative w-[92px] h-[92px] mx-auto my-2 rounded-full"
+          style={{ background: `conic-gradient(currentColor ${w}%, var(--line) 0)` }}
+        >
+          <div className="absolute inset-[9px] rounded-full bg-[var(--inset)] flex items-center justify-center">
+            <span className={`${TYPE.kpi} text-[var(--foreground)]`}>{fmt(v)}</span>
+          </div>
+        </div>
+        <div className={`text-xs font-semibold font-mono ${dcls}`}>
+          {darr} {d === 0 ? "0" : Math.abs(d)}
         </div>
         <div className="text-[11px] text-neutral-400 mt-1">
           next session starts at {fmt(Math.round(v * 0.9 * 10) / 10)} after natural decline
@@ -126,13 +128,13 @@ export default function ResultsPage() {
           End of Session {r} — National Indicators
         </h2>
         {R.disaster && (
-          <div className="text-xs bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 mb-2">
+          <div className="text-xs bg-amber-500/10 border border-amber-500/40 text-amber-100 rounded px-3 py-2 mb-2">
             🌀 <b>{R.disaster.title || "Natural disaster"}</b> struck this session — impact:{" "}
             {disEffectText(R.disaster) || "none"}. Details in the MasMed report.
           </div>
         )}
         {R.election && (
-          <div className="text-xs bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2 mb-2">
+          <div className="text-xs bg-amber-500/10 border border-amber-500/40 text-amber-100 rounded px-3 py-2 mb-2">
             🗳 {R.election.announce ? "Election ANNOUNCED — POP vs SOP vote next session. " : ""}
             {R.election.winner
               ? `${R.election.winner} won — treasury $${fmt(R.election.treasury.total)} collected; $${fmt(

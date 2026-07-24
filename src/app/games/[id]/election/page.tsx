@@ -238,14 +238,14 @@ export default function ElectionPage() {
         />
         <div className="mt-3">
           {elecActive(E) ? (
-            <div className="text-xs bg-amber-50 border border-amber-300 text-amber-800 rounded px-3 py-2">
+            <div className="text-xs bg-amber-500/10 border border-amber-500/40 text-amber-100 rounded px-3 py-2">
               🗳 Election armed for Session {currentRound}
               {E.announce ? " · will be announced" : ""}
               {E.winner ? ` · ${E.winner} declared winner` : ""}
               {elecEffectText(E) ? ` · indicator impact: ${elecEffectText(E)}` : ""}.
             </div>
           ) : (
-            <div className="text-xs bg-green-50 border border-green-300 text-green-800 rounded px-3 py-2">
+            <div className="text-xs bg-emerald-500/10 border border-emerald-500/40 text-emerald-200 rounded px-3 py-2">
               No election activity armed for Session {currentRound}.
             </div>
           )}

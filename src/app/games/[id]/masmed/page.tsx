@@ -67,7 +67,7 @@ export default function MasmedPage() {
             ))}
           </select>
         </label>
-        <button onClick={() => window.print()} className="bg-black text-white rounded px-3 py-1.5 text-sm">
+        <button onClick={() => window.print()} className="bg-[var(--accent)] text-[var(--accent-ink)] font-semibold hover:brightness-110 rounded px-3 py-1.5 text-sm">
           Print report
         </button>
       </div>

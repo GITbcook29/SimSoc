@@ -57,8 +57,8 @@ function LineChart({
   for (let gv = 0; gv <= ymax; gv += 25) {
     grid.push(
       <g key={gv}>
-        <line x1={padL} y1={y(gv)} x2={w - padR} y2={y(gv)} stroke="#e5e7eb" strokeWidth={1} />
-        <text x={padL - 6} y={y(gv) + 4} fill="#9ca3af" fontSize={10} textAnchor="end">
+        <line x1={padL} y1={y(gv)} x2={w - padR} y2={y(gv)} stroke="#1a2740" strokeWidth={1} />
+        <text x={padL - 6} y={y(gv) + 4} fill="#7d8aa8" fontSize={10} textAnchor="end">
           {gv}
         </text>
       </g>
@@ -87,7 +87,7 @@ function LineChart({
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: "auto" }}>
       {grid}
       {rounds.map((r, i) => (
-        <text key={r} x={x(i)} y={h - 6} fill="#9ca3af" fontSize={11} textAnchor="middle">
+        <text key={r} x={x(i)} y={h - 6} fill="#7d8aa8" fontSize={11} textAnchor="middle">
           S{r}
         </text>
       ))}
@@ -192,7 +192,11 @@ export function StatusBoard({
             </div>
           );
           return (
-            <div key={st.region} className="border rounded-lg p-3" style={{ borderTop: `4px solid ${REGION_HEX[st.region]}` }}>
+            <div
+              key={st.region}
+              className="border rounded-lg p-3"
+              style={{ borderTop: `4px solid ${REGION_HEX[st.region]}`, backgroundColor: `${REGION_HEX[st.region]}0d` }}
+            >
               <div className="flex justify-between items-center">
                 <h2 className="font-bold" style={{ color: REGION_HEX[st.region] }}>
                   {st.region}

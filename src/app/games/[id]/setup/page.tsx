@@ -91,7 +91,7 @@ export default function SetupPage() {
               <option key={r}>{r}</option>
             ))}
           </select>
-          <button onClick={handleAdd} className="bg-black text-white rounded px-3 py-1.5 text-sm">
+          <button onClick={handleAdd} className="bg-[var(--accent)] text-[var(--accent-ink)] font-semibold hover:brightness-110 rounded px-3 py-1.5 text-sm">
             Add
           </button>
         </div>
@@ -134,7 +134,7 @@ export default function SetupPage() {
               placeholder="One name per line"
               className="w-full border rounded px-2 py-1.5 text-sm"
             />
-            <button onClick={handlePasteAdd} className="mt-1 bg-black text-white rounded px-3 py-1.5 text-sm">
+            <button onClick={handlePasteAdd} className="mt-1 bg-[var(--accent)] text-[var(--accent-ink)] font-semibold hover:brightness-110 rounded px-3 py-1.5 text-sm">
               Add all
             </button>
           </div>
