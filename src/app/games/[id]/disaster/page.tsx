@@ -2,6 +2,7 @@
 
 import { useGame } from "../game-context";
 import type { DisasterInputs } from "@/lib/types";
+import { CardSkeleton } from "@/components/Skeleton";
 
 const DIS_PRESETS: Record<string, Partial<DisasterInputs>> = {
   hurricane: {
@@ -71,7 +72,7 @@ function disEffectText(D: DisasterInputs) {
 
 export default function DisasterPage() {
   const { loading, currentRound, rounds, setDisInput } = useGame();
-  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <CardSkeleton rows={7} />;
   const round = rounds[currentRound];
   if (!round) return null;
   const D: DisasterInputs = {

@@ -4,6 +4,7 @@ import { useGame } from "../game-context";
 import type { ElectionInputs } from "@/lib/types";
 import { electionTreasury } from "@/lib/simsoc-engine.js";
 import { fmt, livingByRegion } from "@/lib/derive";
+import { CardSkeleton } from "@/components/Skeleton";
 
 const ELEC_PRESETS: Record<string, Partial<ElectionInputs>> = {
   announce: {
@@ -68,7 +69,7 @@ function elecEffectText(E: ElectionInputs) {
 
 export default function ElectionPage() {
   const { loading, currentRound, rounds, heads, participants, setElecInput } = useGame();
-  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <CardSkeleton rows={7} />;
   const round = rounds[currentRound];
   if (!round) return null;
   const E: ElectionInputs = {

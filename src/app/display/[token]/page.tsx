@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { StatusBoard } from "@/components/StatusBoard";
+import { PublicDisplayBoard } from "@/components/PublicDisplayBoard";
 import type { Participant, Round } from "@/lib/types";
 
 type PublicStatus = {
@@ -43,16 +43,16 @@ export default function PublicDisplayPage({ params }: { params: Promise<{ token:
 
   if (notFound) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-white">
-        <p className="text-lg">Display link not found — it may have been regenerated.</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <p className="text-2xl text-slate-300">Display link not found — it may have been regenerated.</p>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-white">
-        <p className="text-lg">Loading…</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <p className="text-2xl text-slate-300">Loading…</p>
       </div>
     );
   }
@@ -71,12 +71,12 @@ export default function PublicDisplayPage({ params }: { params: Promise<{ token:
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-8">
-      <h1 className="text-2xl font-bold tracking-wide mb-1">{data.game_name}</h1>
-      <p className="text-sm text-neutral-500 mb-6">
-        SIMSOC — Society Status · Session {data.current_round} · updates automatically
-      </p>
-      <StatusBoard participants={participants} rounds={rounds} />
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-10 md:p-14 flex flex-col">
+      <div className="mb-10">
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">{data.game_name}</h1>
+        <p className="mt-2 text-xl md:text-2xl text-slate-400">SIMSOC · Session {data.current_round}</p>
+      </div>
+      <PublicDisplayBoard participants={participants} rounds={rounds} />
     </div>
   );
 }

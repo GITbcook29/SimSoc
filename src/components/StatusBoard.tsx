@@ -1,11 +1,13 @@
 import { REGIONS, type Region } from "@/lib/types";
 import { isDead } from "@/lib/derive";
 import type { Participant, Round } from "@/lib/types";
+import { SEVERITY_BANNER, SEVERITY_TEXT, TYPE, type Severity } from "@/lib/tokens";
+import { EmptyState } from "@/components/EmptyState";
 
-const IND_COLORS: Record<string, string> = { FES: "#4da3ff", SL: "#3ecf8e", SC: "#f59e0b", PC: "#a78bfa" };
-const REGION_HEX: Record<Region, string> = { Red: "#e05555", Yellow: "#ca9a1f", Blue: "#5590e0", Green: "#55b06a" };
+export const IND_COLORS: Record<string, string> = { FES: "#4da3ff", SL: "#3ecf8e", SC: "#f59e0b", PC: "#a78bfa" };
+export const REGION_HEX: Record<Region, string> = { Red: "#e05555", Yellow: "#ca9a1f", Blue: "#5590e0", Green: "#55b06a" };
 
-function regionStatsFor(roster: Participant[], round: number) {
+export function regionStatsFor(roster: Participant[], round: number) {
   return REGIONS.map((reg) => {
     const members = roster.filter((p) => p.region === reg);
     const N = members.length;
@@ -62,6 +64,25 @@ function LineChart({
       </g>
     );
   }
+  // End-of-line labels collide when series converge (e.g. two indicators land on the same
+  // value). De-conflict by nudging labels apart vertically, in y order, then draw a short
+  // leader line back to the true data point whenever a label had to move.
+  const minGap = 13;
+  const labelYMin = padT + 4;
+  const labelYMax = h - padB - 4;
+  const rawLabels = series.map((s) => {
+    const lastVal = s.values[s.values.length - 1];
+    return { name: s.name, color: s.color, trueY: y(lastVal), y: y(lastVal) };
+  });
+  const labels = [...rawLabels].sort((a, b) => a.trueY - b.trueY);
+  for (let i = 1; i < labels.length; i++) {
+    if (labels[i].y - labels[i - 1].y < minGap) labels[i].y = labels[i - 1].y + minGap;
+  }
+  const overflow = labels.length ? Math.max(0, labels[labels.length - 1].y - labelYMax) : 0;
+  if (overflow > 0) labels.forEach((l) => (l.y -= overflow));
+  labels.forEach((l) => (l.y = Math.max(labelYMin, l.y)));
+  const labelX = x(rounds.length - 1) + 8;
+
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: "auto" }}>
       {grid}
@@ -72,19 +93,25 @@ function LineChart({
       ))}
       {series.map((s) => {
         const pts = s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ");
-        const last = s.values[s.values.length - 1];
         return (
           <g key={s.name}>
             <polyline points={pts} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" />
             {s.values.map((v, i) => (
               <circle key={i} cx={x(i)} cy={y(v)} r={3.5} fill={s.color} />
             ))}
-            <text x={x(s.values.length - 1) + 6} y={y(last) + 4} fill={s.color} fontSize={11} fontWeight={700}>
-              {s.name}
-            </text>
           </g>
         );
       })}
+      {labels.map((l) => (
+        <g key={l.name}>
+          {Math.abs(l.y - l.trueY) > 1 && (
+            <line x1={labelX - 4} y1={l.trueY} x2={labelX + 2} y2={l.y} stroke={l.color} strokeWidth={1} />
+          )}
+          <text x={labelX} y={l.y + 4} fill={l.color} fontSize={11} fontWeight={700}>
+            {l.name}
+          </text>
+        </g>
+      ))}
     </svg>
   );
 }
@@ -92,9 +119,11 @@ function LineChart({
 export function StatusBoard({
   participants,
   rounds,
+  gameId,
 }: {
   participants: Participant[];
   rounds: Record<number, Round>;
+  gameId?: string;
 }) {
   const closedRounds = Object.values(rounds)
     .filter((r) => r.closed && r.results)
@@ -105,7 +134,11 @@ export function StatusBoard({
     return (
       <div className="border rounded-lg p-4">
         <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-2">Society Status</h2>
-        <p className="text-sm text-neutral-500">No sessions closed yet — the status board comes alive after Session 1 is closed.</p>
+        <EmptyState
+          text="No sessions closed yet — the status board comes alive after Session 1 is closed."
+          href={gameId ? `/games/${gameId}/session` : undefined}
+          cta="Go to Session tab"
+        />
       </div>
     );
   }
@@ -130,7 +163,7 @@ export function StatusBoard({
         <div className="flex gap-2">
           {closedRounds.map((r) => {
             const m = rounds[r].results!.mult;
-            const color = m === null ? "text-red-600" : m >= 1 ? "text-green-600" : m >= 0.5 ? "text-amber-600" : "text-red-600";
+            const color = m === null ? SEVERITY_TEXT.danger : m >= 1 ? SEVERITY_TEXT.success : m >= 0.5 ? SEVERITY_TEXT.warning : SEVERITY_TEXT.danger;
             return (
               <div key={r} className="flex-1 text-center">
                 <div className={`font-extrabold text-lg ${color}`}>{m === null ? "✖" : "×" + m}</div>
@@ -140,15 +173,14 @@ export function StatusBoard({
           })}
         </div>
         {R.mult === null && (
-          <div className="bg-red-50 border border-red-400 text-red-700 rounded px-3 py-2 mt-2 font-bold">
-            ☠ THE SOCIETY HAS COLLAPSED
-          </div>
+          <div className={`rounded border px-3 py-2 mt-2 font-bold ${SEVERITY_BANNER.danger}`}>☠ THE SOCIETY HAS COLLAPSED</div>
         )}
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
         {stats.map((st) => {
-          const sc = st.score >= 75 ? "text-green-600" : st.score >= 45 ? "text-amber-600" : "text-red-600";
+          const sev: Severity = st.score >= 75 ? "success" : st.score >= 45 ? "warning" : "danger";
+          const sc = SEVERITY_TEXT[sev];
           const barMax = Math.max(1, st.N);
           const bar = (label: string, val: number, color: string) => (
             <div key={label} className="flex items-center gap-2 text-xs my-1">
@@ -166,7 +198,7 @@ export function StatusBoard({
                   {st.region}
                 </h2>
                 <div className="text-center">
-                  <div className={`text-2xl font-extrabold ${sc}`}>{st.score}</div>
+                  <div className={`${TYPE.kpiSm} ${sc}`}>{st.score}</div>
                   <div className="text-[10px] text-neutral-400">health</div>
                 </div>
               </div>

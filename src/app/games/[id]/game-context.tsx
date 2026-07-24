@@ -38,7 +38,7 @@ import {
   type RoundInputs,
 } from "@/lib/types";
 
-type Toast = { id: number; text: string };
+type Toast = { id: number; text: string; kind: "success" | "error" };
 
 type GameContextValue = {
   loading: boolean;
@@ -135,7 +135,8 @@ export function GameProvider({
 
   const toast = useCallback((text: string) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, text }]);
+    const kind: Toast["kind"] = text.startsWith("Error") ? "error" : "success";
+    setToasts((t) => [...t, { id, text, kind }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2400);
   }, []);
 

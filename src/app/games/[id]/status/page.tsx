@@ -3,12 +3,20 @@
 import { useState } from "react";
 import { useGame } from "../game-context";
 import { StatusBoard } from "@/components/StatusBoard";
+import { CardSkeleton, ChartSkeleton, TileGridSkeleton } from "@/components/Skeleton";
 
 export default function StatusPage() {
   const { loading, game, participants, rounds, regenerateShareLink } = useGame();
   const [copied, setCopied] = useState(false);
 
-  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (loading)
+    return (
+      <div className="space-y-4">
+        <CardSkeleton rows={2} />
+        <ChartSkeleton />
+        <TileGridSkeleton tiles={4} />
+      </div>
+    );
 
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/display/${game.status_share_token}` : "";
@@ -53,7 +61,7 @@ export default function StatusPage() {
         </button>
       </div>
 
-      <StatusBoard participants={participants} rounds={rounds} />
+      <StatusBoard participants={participants} rounds={rounds} gameId={game.id} />
     </div>
   );
 }

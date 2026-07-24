@@ -5,6 +5,7 @@ import { useGame } from "../game-context";
 import { REGIONS, type AttendanceCode } from "@/lib/types";
 import { basinPayment, LV } from "@/lib/simsoc-engine.js";
 import { countStatus, fmt, isDead, newDeaths } from "@/lib/derive";
+import { TableSkeleton } from "@/components/Skeleton";
 
 const STATUS_CODES: AttendanceCode[] = ["P", "A", "E", "D"];
 const STATUS_LABEL: Record<AttendanceCode, string> = { P: "P", A: "A", E: "U", D: "D" };
@@ -32,7 +33,7 @@ export default function SessionPage() {
     closeSession,
   } = useGame();
 
-  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <TableSkeleton rows={8} cols={7} />;
 
   const round = rounds[currentRound];
   if (!round) return <p className="text-sm text-neutral-500">Preparing session…</p>;

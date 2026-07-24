@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useGame } from "../game-context";
 import { fmt } from "@/lib/derive";
+import { TableSkeleton } from "@/components/Skeleton";
 
 export default function HistoryPage() {
   const { loading, game, rounds, currentRound, reopenRound } = useGame();
   const router = useRouter();
-  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <TableSkeleton rows={6} cols={8} />;
 
   const roundNos = Object.keys(rounds)
     .map(Number)

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useGame } from "./game-context";
+import { TOAST_KIND } from "@/lib/tokens";
 
 const TABS: [string, string][] = [
   ["setup", "Setup"],
@@ -54,7 +55,11 @@ export function GameNav({ gameId, gameName }: { gameId: string; gameName: string
       </div>
       <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-50">
         {toasts.map((t) => (
-          <div key={t.id} className="bg-black text-white text-sm rounded-lg px-4 py-2 shadow-lg">
+          <div
+            key={t.id}
+            className={`${TOAST_KIND[t.kind].bg} text-white text-sm rounded-lg px-4 py-2 shadow-lg flex items-center gap-2`}
+          >
+            <span className="font-bold">{TOAST_KIND[t.kind].icon}</span>
             {t.text}
           </div>
         ))}

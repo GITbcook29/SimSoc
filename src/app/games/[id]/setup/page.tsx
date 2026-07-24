@@ -6,6 +6,7 @@ import { HEADREGION, HEADROLES, REGIONS, type HeadRole, type Region } from "@/li
 import { downloadCSVTemplate, parseRosterCSV } from "@/lib/csv";
 import { LV } from "@/lib/simsoc-engine.js";
 import { isDead } from "@/lib/derive";
+import { TableSkeleton } from "@/components/Skeleton";
 
 export default function SetupPage() {
   const {
@@ -32,7 +33,7 @@ export default function SetupPage() {
   const [pasteText, setPasteText] = useState("");
   const csvInputRef = useRef<HTMLInputElement>(null);
 
-  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (loading) return <TableSkeleton rows={7} cols={5} />;
 
   const roleOf = (id: string) =>
     (HEADROLES as readonly HeadRole[]).find((r) => heads[r] === id) ?? "";

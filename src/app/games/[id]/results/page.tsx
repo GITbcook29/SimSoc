@@ -3,6 +3,9 @@
 import { useGame } from "../game-context";
 import { fmt } from "@/lib/derive";
 import type { Indicators } from "@/lib/types";
+import { SEVERITY_BANNER, SEVERITY_TILE, SEVERITY_TEXT, TYPE, type Severity } from "@/lib/tokens";
+import { EmptyState } from "@/components/EmptyState";
+import { TileGridSkeleton } from "@/components/Skeleton";
 
 function disEffectText(D: { dFES: number; dSL: number; dSC: number; dPC: number; subForfeit?: number; levy?: number }) {
   const parts: string[] = [];
@@ -31,8 +34,8 @@ const NAMES: Record<keyof Indicators, string> = {
 };
 
 export default function ResultsPage() {
-  const { loading, rounds, heads, participants, prevIndicators } = useGame();
-  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  const { loading, game, rounds, heads, participants, prevIndicators } = useGame();
+  if (loading) return <TileGridSkeleton tiles={4} />;
 
   const closed = Object.values(rounds)
     .filter((r) => r.closed && r.results)
@@ -42,9 +45,11 @@ export default function ResultsPage() {
     return (
       <div className="border rounded-lg p-4">
         <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-2">Results</h2>
-        <p className="text-sm text-neutral-500">
-          No session closed yet. Enter data on the Session tab and press &quot;Close Session &amp; Calculate&quot;.
-        </p>
+        <EmptyState
+          text={'No session closed yet — results appear here once you close Session 1.'}
+          href={`/games/${game.id}/session`}
+          cta="Go to Session tab"
+        />
       </div>
     );
   }
@@ -63,8 +68,9 @@ export default function ResultsPage() {
   const tiles = (Object.keys(NAMES) as (keyof Indicators)[]).map((k) => {
     const v = R.indicators[k];
     const d = Math.round((v - prev[k]) * 10) / 10;
-    const cls = v >= 90 ? "text-green-600 border-green-300" : v >= 50 ? "text-amber-600 border-amber-300" : "text-red-600 border-red-300";
-    const dcls = d > 0 ? "text-green-600" : d < 0 ? "text-red-600" : "text-neutral-400";
+    const sev: Severity = v >= 90 ? "success" : v >= 50 ? "warning" : "danger";
+    const cls = SEVERITY_TILE[sev];
+    const dcls = d > 0 ? SEVERITY_TEXT.success : d < 0 ? SEVERITY_TEXT.danger : "text-neutral-400";
     const darr = d > 0 ? "▲" : d < 0 ? "▼" : "—";
     const w = Math.max(0, Math.min(100, (v / MAX) * 100));
     return (
@@ -77,7 +83,7 @@ export default function ResultsPage() {
             {darr} {d === 0 ? "0" : Math.abs(d)}
           </span>
         </div>
-        <div className="text-3xl font-extrabold">{fmt(v)}</div>
+        <div className={TYPE.kpi}>{fmt(v)}</div>
         <div className="h-3 bg-neutral-100 rounded-full mt-2 overflow-hidden">
           <div className="h-full bg-current rounded-full" style={{ width: `${w}%` }} />
         </div>
@@ -88,24 +94,24 @@ export default function ResultsPage() {
     );
   });
 
-  const warns: { cls: string; text: string }[] = [];
+  const warns: { sev: Severity; text: string }[] = [];
   (Object.keys(NAMES) as (keyof Indicators)[]).forEach((k) => {
     const v = R.indicators[k];
     const headroom = Math.round(v * 0.9 * 10) / 10;
-    if (v < 0) warns.push({ cls: "bg-red-50 border-red-400 text-red-700", text: `☠ ${k} is below zero — the society has COLLAPSED.` });
+    if (v < 0) warns.push({ sev: "danger", text: `☠ ${k} is below zero — the society has COLLAPSED.` });
     else if (v < 10)
       warns.push({
-        cls: "bg-red-50 border-red-400 text-red-700",
+        sev: "danger",
         text: `⛔ ${k} = ${fmt(v)} — CRITICAL: only ${headroom} points from collapse; multiplier already at 0.1.`,
       });
     else if (v < 25)
       warns.push({
-        cls: "bg-amber-50 border-amber-400 text-amber-700",
+        sev: "warning",
         text: `⚠ ${k} = ${fmt(v)} — danger close: one bad session could push it below 0. Headroom: ${headroom}.`,
       });
     else if (v < 50)
       warns.push({
-        cls: "bg-neutral-50 border-neutral-300 text-neutral-600",
+        sev: "neutral",
         text: `👁 ${k} = ${fmt(v)} — watch: dragging multiplier down (×${R.mult ?? "—"}).`,
       });
   });
@@ -141,11 +147,15 @@ export default function ResultsPage() {
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <div className="border rounded-lg text-center py-2">
-            <div className="text-xl font-bold">{fmt(R.minInd)}</div>
+            <div className={TYPE.kpiSm}>{fmt(R.minInd)}</div>
             <div className="text-[10px] uppercase text-neutral-400">Lowest</div>
           </div>
           <div className="border rounded-lg text-center py-2">
-            <div className={`text-xl font-bold ${R.mult === null ? "text-red-600" : R.mult >= 1 ? "text-green-600" : "text-amber-600"}`}>
+            <div
+              className={`${TYPE.kpiSm} ${
+                R.mult === null ? SEVERITY_TEXT.danger : R.mult >= 1 ? SEVERITY_TEXT.success : SEVERITY_TEXT.warning
+              }`}
+            >
               {multTxt}
             </div>
             <div className="text-[10px] uppercase text-neutral-400">Income multiplier</div>
@@ -155,15 +165,13 @@ export default function ResultsPage() {
           <div className="mt-3 space-y-1">
             <h3 className="text-xs text-neutral-500">Collapse risk</h3>
             {warns.map((w, i) => (
-              <div key={i} className={`text-xs border rounded px-3 py-2 ${w.cls}`}>
+              <div key={i} className={`text-xs border rounded px-3 py-2 ${SEVERITY_BANNER[w.sev]}`}>
                 {w.text}
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-xs bg-green-50 border border-green-300 text-green-800 rounded px-3 py-2 mt-3">
-            ✓ No indicators near collapse.
-          </div>
+          <div className={`text-xs border rounded px-3 py-2 mt-3 ${SEVERITY_BANNER.success}`}>✓ No indicators near collapse.</div>
         )}
         <p className="text-xs text-neutral-400 mt-3">
           Pop: {R.pop} · Absent: {R.absentees} · Unemployed: {R.unemployed} · Deaths: {R.deaths} · Rioters:{" "}
