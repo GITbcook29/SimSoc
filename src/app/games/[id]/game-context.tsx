@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { makePlayerCode } from "@/lib/player-code";
 import {
   computeRound,
   defaultInputs,
@@ -65,6 +66,7 @@ type GameContextValue = {
   setHead: (role: HeadRole, participantId: string | null) => Promise<void>;
   setConfig: (patch: Partial<Game["config"]>) => Promise<void>;
   regenerateShareLink: () => Promise<void>;
+  startNextSession: () => Promise<void>;
   setStatus: (id: string, code: "P" | "A" | "E" | "D") => Promise<void>;
   setFlag: (id: string, flag: "ns" | "lux" | "ptc") => Promise<void>;
   setInput: <K extends keyof RoundInputs>(key: K, value: RoundInputs[K]) => Promise<void>;
@@ -373,11 +375,36 @@ export function GameProvider({
 
   const regenerateShareLink = useCallback(async () => {
     const token = crypto.randomUUID();
-    setGame((g) => ({ ...g, status_share_token: token }));
-    const { error } = await supabase.from("games").update({ status_share_token: token }).eq("id", gameId);
+    const code = makePlayerCode();
+    setGame((g) => ({ ...g, status_share_token: token, player_code: code }));
+    const { error } = await supabase
+      .from("games")
+      .update({ status_share_token: token, player_code: code })
+      .eq("id", gameId);
     if (error) toast("Error: " + error.message);
-    else toast("Share link regenerated — old link no longer works");
+    else toast("Player link & code regenerated — the old ones no longer work");
   }, [gameId, supabase, toast]);
+
+  // "Start next session": releases every closed-but-unreleased MasMed report to
+  // players (in practice the one just closed). Kept separate from closeSession so
+  // the report drops when the group actually reconvenes, not the instant the
+  // coordinator computes it.
+  const startNextSession = useCallback(async () => {
+    const closed = Object.values(rounds)
+      .filter((r) => r.closed && r.results)
+      .map((r) => r.round_no);
+    if (!closed.length) return;
+    const latestClosed = Math.max(...closed);
+    const releasedThrough = game.masmed_released_through ?? 0;
+    if (latestClosed <= releasedThrough) return;
+    setGame((g) => ({ ...g, masmed_released_through: latestClosed }));
+    const { error } = await supabase
+      .from("games")
+      .update({ masmed_released_through: latestClosed })
+      .eq("id", gameId);
+    if (error) toast("Error: " + error.message);
+    else toast(`Session ${latestClosed} MasMed report released to players`);
+  }, [rounds, game.masmed_released_through, gameId, supabase, toast]);
 
   // ---- session marks ----
   const patchParticipantSession = useCallback(
@@ -603,6 +630,7 @@ export function GameProvider({
     setHead,
     setConfig,
     regenerateShareLink,
+    startNextSession,
     setStatus,
     setFlag,
     setInput,

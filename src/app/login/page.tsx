@@ -1,4 +1,5 @@
 import { signIn, signUp } from "./actions";
+import { PlayerJoin } from "./PlayerJoin";
 
 export default async function LoginPage({
   searchParams,
@@ -81,6 +82,17 @@ export default async function LoginPage({
             Create account
           </button>
         </form>
+
+        <div className="flex items-center gap-3 text-[11px] font-mono uppercase tracking-[1.5px] text-neutral-400">
+          <div className="h-px flex-1 bg-[var(--line-2)]" />
+          playing in a game
+          <div className="h-px flex-1 bg-[var(--line-2)]" />
+        </div>
+
+        <PlayerJoin />
+        <p className="text-center text-[11px] text-neutral-500">
+          Enter the game code from your coordinator to see the live status board. No account needed.
+        </p>
       </div>
     </div>
   );

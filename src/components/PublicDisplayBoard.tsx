@@ -96,8 +96,11 @@ export function PublicDisplayBoard({ participants, rounds }: { participants: Par
       {/* Headline indicator tiles */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         {series.map((s) => (
-          <div key={s.name} className="text-center">
-            <div className="text-6xl md:text-7xl font-extrabold tabular-nums" style={{ color: s.color }}>
+          <div key={s.name} className="text-center px-1">
+            <div
+              className="text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-extrabold tabular-nums leading-none"
+              style={{ color: s.color }}
+            >
               {s.values[s.values.length - 1]}
             </div>
             <div className="mt-2 text-lg md:text-xl font-semibold text-slate-300">{s.name}</div>

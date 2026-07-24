@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { createGame, inviteToGame } from "./actions";
+import { createGame, inviteToGame, renameGame } from "./actions";
 import { signOut } from "@/app/login/actions";
+import { DeleteGameButton } from "./DeleteGameButton";
 
 export default async function GamesPage() {
   const supabase = await createClient();
@@ -62,7 +63,7 @@ export default async function GamesPage() {
           const invites = invitesByGame.get(game.id) ?? [];
           return (
             <div key={game.id} className="border rounded-lg p-4 space-y-3 bg-[var(--panel)]">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <Link href={`/games/${game.id}/setup`} className="font-medium hover:underline">
                     {game.name}
@@ -71,10 +72,26 @@ export default async function GamesPage() {
                     Round {game.current_round} {isOwner ? "· you own this game" : "· shared with you"}
                   </p>
                 </div>
+                {isOwner && <DeleteGameButton gameId={game.id} gameName={game.name} />}
               </div>
 
               {isOwner && (
                 <div className="border-t pt-3 space-y-2">
+                  <form action={renameGame.bind(null, game.id)} className="flex gap-2">
+                    <input
+                      name="name"
+                      defaultValue={game.name}
+                      required
+                      aria-label="Game name"
+                      className="flex-1 border rounded px-2 py-1.5 text-xs"
+                    />
+                    <button
+                      type="submit"
+                      className="border rounded px-3 py-1.5 text-xs font-medium"
+                    >
+                      Rename
+                    </button>
+                  </form>
                   <form action={inviteToGame.bind(null, game.id)} className="flex gap-2">
                     <input
                       name="email"

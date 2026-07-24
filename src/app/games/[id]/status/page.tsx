@@ -20,6 +20,7 @@ export default function StatusPage() {
 
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/display/${game.status_share_token}` : "";
+  const code = game.player_code ?? null;
 
   async function copyLink() {
     await navigator.clipboard.writeText(shareUrl);
@@ -29,35 +30,45 @@ export default function StatusPage() {
 
   return (
     <div>
-      <div className="border rounded-lg p-4 mb-4 flex items-center gap-3 flex-wrap">
-        <div className="flex-1 min-w-[240px]">
-          <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-1">
-            Public projector display
-          </h2>
+      <div className="border rounded-lg p-4 mb-4 space-y-3">
+        <div>
+          <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-1">Player status link</h2>
           <p className="text-xs text-neutral-500">
-            No login needed, no participant names — just indicators and region counts. Open this link on the
-            classroom screen; it refreshes automatically.
+            Share this with your participants. They get a live, mobile- and TV-friendly view with six tabs —
+            overall Society status, the MASMED reports, and each team&rsquo;s roster, roles, and status. No login
+            or password needed; it refreshes automatically.
           </p>
         </div>
-        <a
-          href={shareUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs border rounded px-3 py-1.5 truncate max-w-[280px]"
-        >
-          {shareUrl}
-        </a>
-        <button onClick={copyLink} className="text-xs border rounded px-3 py-1.5">
-          {copied ? "Copied" : "Copy link"}
-        </button>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href={shareUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs border rounded px-3 py-1.5 truncate max-w-[280px]"
+          >
+            {shareUrl}
+          </a>
+          <button onClick={copyLink} className="text-xs border rounded px-3 py-1.5">
+            {copied ? "Copied" : "Copy link"}
+          </button>
+          {code && (
+            <span className="text-xs text-neutral-500">
+              or game code{" "}
+              <b className="font-mono tracking-[2px] text-sm text-[var(--foreground)]">{code}</b>{" "}
+              (players enter this at the login screen)
+            </span>
+          )}
+        </div>
+
         <button
           onClick={() => {
-            if (confirm("Regenerate the share link? The old link will stop working immediately."))
+            if (confirm("Regenerate the player link and game code? The old link and code will stop working immediately."))
               regenerateShareLink();
           }}
-          className="text-xs text-red-600 border border-red-200 rounded px-3 py-1.5"
+          className="text-xs text-red-400 border border-red-500/40 rounded px-3 py-1.5 hover:bg-red-500/10"
         >
-          Regenerate (revoke old link)
+          Regenerate (revoke old link &amp; code)
         </button>
       </div>
 

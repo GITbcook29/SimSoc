@@ -6,6 +6,7 @@ import { REGIONS, type AttendanceCode } from "@/lib/types";
 import { basinPayment, LV } from "@/lib/simsoc-engine.js";
 import { countStatus, fmt, isDead, newDeaths } from "@/lib/derive";
 import { TableSkeleton } from "@/components/Skeleton";
+import { ReleaseReportBanner } from "@/components/ReleaseReportBanner";
 
 const STATUS_CODES: AttendanceCode[] = ["P", "A", "E", "D"];
 const STATUS_LABEL: Record<AttendanceCode, string> = { P: "P", A: "A", E: "U", D: "D" };
@@ -75,6 +76,7 @@ export default function SessionPage() {
 
   return (
     <div>
+      <ReleaseReportBanner />
       <div className="grid md:grid-cols-3 gap-4">
         <div className="md:col-span-2 border rounded-lg p-4">
           <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-2">

@@ -152,4 +152,10 @@ export type Game = {
   config: GameConfig;
   current_round: number;
   status_share_token: string;
+  // Highest session number whose MasMed report has been released to players
+  // (advanced by the coordinator's "Start next session" action). 0 = none yet.
+  masmed_released_through: number;
+  // Short human-typable code players enter on the login screen to reach the
+  // status link. Null only until migration 0005 has run.
+  player_code: string | null;
 };

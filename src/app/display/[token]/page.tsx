@@ -2,21 +2,17 @@
 
 import { use, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { PublicDisplayBoard } from "@/components/PublicDisplayBoard";
-import type { Participant, Round } from "@/lib/types";
+import { PlayerView, type PlayerData } from "@/components/PlayerView";
 
-type PublicStatus = {
-  game_name: string;
-  current_round: number;
-  participants: { region: Participant["region"]; sessions: Participant["sessions"] }[];
-  rounds: { round_no: number; closed: boolean; results: Round["results"] }[];
-};
-
+// The player status link. The `[token]` segment accepts either the full share
+// token (from the copied link) or the short game code (typed on the login
+// screen) — the `player_status` RPC resolves both. Polls rather than using
+// Realtime, which would require opening RLS to anon.
 const POLL_MS = 6000;
 
-export default function PublicDisplayPage({ params }: { params: Promise<{ token: string }> }) {
+export default function PlayerStatusPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
-  const [data, setData] = useState<PublicStatus | null>(null);
+  const [data, setData] = useState<PlayerData | null>(null);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
@@ -24,13 +20,14 @@ export default function PublicDisplayPage({ params }: { params: Promise<{ token:
     let cancelled = false;
 
     async function poll() {
-      const { data: result, error } = await supabase.rpc("public_status", { p_token: token });
+      const { data: result, error } = await supabase.rpc("player_status", { p_key: token });
       if (cancelled) return;
       if (error || !result) {
         setNotFound(true);
         return;
       }
-      setData(result as PublicStatus);
+      setNotFound(false);
+      setData(result as PlayerData);
     }
 
     poll();
@@ -43,8 +40,10 @@ export default function PublicDisplayPage({ params }: { params: Promise<{ token:
 
   if (notFound) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        <p className="text-2xl text-slate-300">Display link not found — it may have been regenerated.</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-6 text-center">
+        <p className="text-xl md:text-2xl text-slate-300">
+          Status link not found — double-check the game code or link from your coordinator.
+        </p>
       </div>
     );
   }
@@ -57,26 +56,5 @@ export default function PublicDisplayPage({ params }: { params: Promise<{ token:
     );
   }
 
-  const participants = data.participants as Participant[];
-  const rounds: Record<number, Round> = {};
-  for (const r of data.rounds) {
-    rounds[r.round_no] = {
-      id: String(r.round_no),
-      game_id: "",
-      round_no: r.round_no,
-      inputs: {} as Round["inputs"],
-      results: r.results,
-      closed: r.closed,
-    };
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-10 md:p-14 flex flex-col">
-      <div className="mb-10">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">{data.game_name}</h1>
-        <p className="mt-2 text-xl md:text-2xl text-slate-400">SIMSOC · Session {data.current_round}</p>
-      </div>
-      <PublicDisplayBoard participants={participants} rounds={rounds} />
-    </div>
-  );
+  return <PlayerView data={data} />;
 }
