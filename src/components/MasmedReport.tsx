@@ -41,7 +41,7 @@ export function MasmedReport({
       <h2 className="text-lg font-bold border-b-2 border-black pb-1">
         Report to MASMED — End of Session {roundNo} (Form Y-1)
       </h2>
-      <div className="grid grid-cols-3 gap-6 mt-3 text-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-3 text-sm">
         <div>
           <b>National Indicators</b>
           <table className="w-full text-xs mt-1">
