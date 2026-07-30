@@ -1,0 +1,176 @@
+/* ============================================================
+   Business Mastery Cohort theme.
+
+   Scoped to `.bmc` rather than `:root` so it coexists with the
+   SimSoc "Mission Control" theme in the same app. Redefining the
+   handful of variable names globals.css already uses (--muted,
+   --line, --inset, --foreground, --background, --accent, --ring)
+   inside this scope means the base-layer rules inherited from
+   globals.css produce paper-and-ink results here instead of dark
+   console ones, with no changes to the SimSoc side.
+   ============================================================ */
+
+.bmc {
+  /* Core palette */
+  --ink: #0f0e0c;
+  --paper: #f6f2ec;
+  --gold: #c9923a;
+  --gold-lt: #fdf3e7;
+  --teal: #2e7b72;
+  --teal-lt: #e4f2f0;
+  --red: #c0392b;
+  --green: #27ae60;
+  --amber: #e67e22;
+  --rule: #e0d9cf;
+  --white: #ffffff;
+  --live: #3498db;
+  --live-lt: #ebf5fb;
+
+  /* Palette brand accents — lighter, brighter, participant-facing */
+  --purple: #7b52ab;
+  --purple-lt: #f0e9f7;
+  --cyan: #00b5c8;
+  --orange: #f47b20;
+
+  /* Overrides of names globals.css already binds */
+  --muted: #8a8278;
+  --line: var(--rule);
+  --inset: var(--white);
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --accent: var(--gold);
+  --ring: rgba(201, 146, 58, 0.25);
+
+  --shadow-card: 0 2px 20px rgba(15, 14, 12, 0.06);
+
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-outfit), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 400;
+  min-height: 100%;
+}
+
+.bmc h1,
+.bmc h2,
+.bmc h3,
+.bmc .display {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.bmc .mono {
+  font-family: var(--font-dm-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Small uppercase eyebrow / table-header label. */
+.bmc .eyebrow {
+  font-family: var(--font-dm-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Inputs read as paper, not as recessed instrument slots. */
+.bmc input:not([type="checkbox"]):not([type="radio"]),
+.bmc select,
+.bmc textarea {
+  background: var(--white);
+  color: var(--ink);
+  font-family: inherit;
+}
+
+.bmc input::placeholder,
+.bmc textarea::placeholder {
+  color: var(--muted);
+}
+
+.bmc input:not([type="checkbox"]):not([type="radio"]):focus,
+.bmc select:focus,
+.bmc textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.bmc input[type="checkbox"],
+.bmc input[type="radio"] {
+  accent-color: var(--teal);
+}
+
+.bmc :focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.bmc ::selection {
+  background: rgba(201, 146, 58, 0.22);
+}
+
+/* Dashed editable field that turns solid gold on focus. */
+.bmc .field {
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  background: transparent;
+  padding: 4px 7px;
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.bmc .field:hover {
+  border-color: var(--muted);
+}
+
+.bmc .field:focus {
+  border-style: solid;
+  border-color: var(--gold);
+  background: var(--white);
+}
+
+.bmc .field-saving {
+  border-color: var(--gold);
+  border-style: solid;
+}
+
+/* ---------- Print: hide controls, expand collapsed sections ---------- */
+@media print {
+  .bmc {
+    background: #fff;
+  }
+
+  .no-print,
+  .bmc nav,
+  .bmc button.no-print {
+    display: none !important;
+  }
+
+  .bmc details {
+    display: block !important;
+  }
+
+  .bmc details > summary {
+    list-style: none;
+  }
+
+  .bmc details[open] > *,
+  .bmc details > * {
+    display: revert !important;
+  }
+
+  .bmc .card {
+    box-shadow: none !important;
+    border: 1px solid var(--rule) !important;
+    break-inside: avoid;
+  }
+
+  .bmc .field {
+    border-color: transparent !important;
+  }
+
+  .bmc .print-break {
+    break-before: page;
+  }
+}
