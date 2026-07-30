@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { landingFor } from "@/lib/bmc/auth";
 import type { Role } from "@/lib/bmc/config";
 
@@ -27,7 +27,7 @@ async function landingForCurrentUser(): Promise<string> {
   if (!user) return "/bmc/login";
 
   const { data } = await supabase
-    .from("bmc_profiles")
+    .from("profiles")
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
@@ -58,7 +58,7 @@ export async function signUpWithPassword(formData: FormData) {
     password,
     options: {
       data: { full_name: fullName },
-      emailRedirectTo: `${origin}/auth/confirm?next=/bmc`,
+      emailRedirectTo: `${origin}/bmc/auth/confirm`,
     },
   });
   if (error) back({ error: error.message });
@@ -78,7 +78,7 @@ export async function sendMagicLink(formData: FormData) {
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${origin}/auth/confirm?next=/bmc` },
+    options: { emailRedirectTo: `${origin}/bmc/auth/confirm` },
   });
   if (error) back({ error: error.message });
 

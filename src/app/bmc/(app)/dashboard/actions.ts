@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireProfile } from "@/lib/bmc/auth";
 
 const PATH = "/bmc/dashboard";
@@ -19,7 +19,7 @@ export async function addTask(formData: FormData) {
   if (!text) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_participant_tasks").insert({
+  await supabase.from("participant_tasks").insert({
     participant_id: me.id,
     text,
     due_date: dueDate || null,
@@ -33,7 +33,7 @@ export async function setTaskDone(id: string, value: string) {
   const me = await requireProfile();
   const supabase = await createClient();
   await supabase
-    .from("bmc_participant_tasks")
+    .from("participant_tasks")
     .update({ done: value === "true" })
     .eq("id", id)
     .eq("participant_id", me.id);
@@ -49,7 +49,7 @@ export async function setTaskField(id: string, column: string, value: string) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_participant_tasks")
+    .from("participant_tasks")
     .update({ [column]: value.trim() || null })
     .eq("id", id)
     .eq("participant_id", me.id);
@@ -64,7 +64,7 @@ export async function deleteTask(formData: FormData) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_participant_tasks")
+    .from("participant_tasks")
     .delete()
     .eq("id", id)
     .eq("participant_id", me.id);
@@ -76,7 +76,7 @@ export async function setBusinessName(value: string) {
   const me = await requireProfile();
   const supabase = await createClient();
   await supabase
-    .from("bmc_profiles")
+    .from("profiles")
     .update({ business_name: value.trim() || null })
     .eq("id", me.id);
 

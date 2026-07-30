@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { ORGS, RACI, type Org, type Raci } from "@/lib/bmc/config";
 
@@ -32,7 +32,7 @@ async function upsertCell(
   const supabase = await createClient();
 
   const { data: existing } = await supabase
-    .from("bmc_responsibility_matrix")
+    .from("responsibility_matrix")
     .select("id")
     .eq("workstream", workstream)
     .eq("org", org)
@@ -40,12 +40,12 @@ async function upsertCell(
 
   if (existing) {
     await supabase
-      .from("bmc_responsibility_matrix")
+      .from("responsibility_matrix")
       .update(patch)
       .eq("id", existing.id);
   } else {
     await supabase
-      .from("bmc_responsibility_matrix")
+      .from("responsibility_matrix")
       .insert({ workstream, org, ...patch });
   }
 
@@ -72,14 +72,14 @@ export async function addWorkstream(formData: FormData) {
   const supabase = await createClient();
 
   const { data: existing } = await supabase
-    .from("bmc_responsibility_matrix")
+    .from("responsibility_matrix")
     .select("id")
     .eq("workstream", name)
     .limit(1);
   if (existing && existing.length > 0) return;
 
   const { data: last } = await supabase
-    .from("bmc_responsibility_matrix")
+    .from("responsibility_matrix")
     .select("sort_order")
     .order("sort_order", { ascending: false })
     .limit(1)
@@ -87,7 +87,7 @@ export async function addWorkstream(formData: FormData) {
 
   // Seed the row with no RACI so the new workstream shows up as a gap until
   // somebody is made Accountable for it.
-  await supabase.from("bmc_responsibility_matrix").insert({
+  await supabase.from("responsibility_matrix").insert({
     workstream: name,
     org: "shared",
     sort_order: (last?.sort_order ?? 0) + 10,
@@ -103,7 +103,7 @@ export async function renameWorkstream(oldName: string, value: string) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_responsibility_matrix")
+    .from("responsibility_matrix")
     .update({ workstream: name })
     .eq("workstream", oldName);
 
@@ -117,7 +117,7 @@ export async function deleteWorkstream(formData: FormData) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_responsibility_matrix")
+    .from("responsibility_matrix")
     .delete()
     .eq("workstream", workstream);
 

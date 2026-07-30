@@ -1,15 +1,22 @@
 # SimSoc + Business Mastery Cohort
 
-Two applications share this Next.js codebase and one Supabase project:
+Two applications share this Next.js codebase. Each owns a **separate Supabase
+project**:
 
 | App | Routes | What it is |
 | --- | --- | --- |
 | **SimSoc Coordinator Cockpit** | `/`, `/games/*`, `/display/*`, `/login` | Live-game coordinator tool for running SIMSOC sessions. |
 | **Business Mastery Cohort (BMC)** | `/bmc/*` | Program platform for the Spring 2027 cohort — build-team planning tools plus a participant portal. |
 
-They are independent: separate sign-in pages, separate navigation, separate
-visual themes, and separate database tables (BMC tables are all prefixed
-`bmc_`). Nothing in one app reads the other's data.
+They are fully independent: separate Supabase projects, separate sign-in
+pages and auth sessions, separate navigation, and separate visual themes.
+Neither app can read the other's data — the isolation is at the database
+level, not just in the UI.
+
+`src/proxy.ts` picks which project a request authenticates against: `/bmc/*`
+goes to BMC's, everything else to SimSoc's. Because `@supabase/ssr` names its
+session cookie after the project ref, a user can be signed into both at once
+without either clobbering the other.
 
 Stack: Next.js 16 (App Router, TypeScript), Tailwind CSS v4, Supabase
 (Postgres + Auth + Storage), Anthropic Messages API, deployed on Vercel.
@@ -73,59 +80,81 @@ npm run dev
 
 Open http://localhost:3000/bmc.
 
-### Supabase project
+### Supabase projects
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. **Project Settings → API** gives you `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
-3. Run the migrations (below).
-4. **Authentication → Providers → Email**: enable email/password. Enable magic
+You need **two** projects at [supabase.com](https://supabase.com) — one per
+app. Create the BMC one fresh rather than reusing an existing project: its
+migration defines a `handle_new_user` trigger, which is the same name
+Supabase's own starter snippets use.
+
+For each project, **Project Settings → API** gives you the URL and anon key.
+Put SimSoc's in `NEXT_PUBLIC_SUPABASE_*` and BMC's in
+`NEXT_PUBLIC_BMC_SUPABASE_*`; BMC's service role key goes in
+`BMC_SUPABASE_SERVICE_ROLE_KEY`.
+
+Then, in **each** project:
+
+1. **Authentication → Providers → Email** — enable email/password, plus magic
    links if you want the "email me a link" option on the sign-in page.
-5. **Authentication → URL Configuration**: add your site URL and
-   `<site>/auth/confirm` as a redirect URL.
+2. **Authentication → URL Configuration** — add your site URL, and add the
+   app's confirm route as a redirect URL: `<site>/auth/confirm` for the SimSoc
+   project, `<site>/bmc/auth/confirm` for the BMC project. Each project only
+   ever issues links for its own app.
 
 ### Running migrations
 
-Either paste each file into **SQL Editor → New query → Run**, in order:
+Migrations live in a directory per project. Paste each file into that
+project's **SQL Editor → New query → Run**, in order — and check the project
+ref in the dashboard URL before you run, since the two sets are not
+interchangeable.
+
+**SimSoc project** — `supabase/migrations/`:
 
 ```
-supabase/migrations/0001_init.sql            SimSoc
-supabase/migrations/0002_rounds_results_nullable.sql
-supabase/migrations/0003_enable_realtime.sql
-supabase/migrations/0004_public_status_display.sql
-supabase/migrations/0005_player_status.sql
-supabase/migrations/0006_bmc_init.sql        BMC schema, RLS, storage bucket
-supabase/migrations/0007_bmc_seed.sql        BMC seed data
+0001_init.sql
+0002_rounds_results_nullable.sql
+0003_enable_realtime.sql
+0004_public_status_display.sql
+0005_player_status.sql
 ```
 
-…or use the CLI:
+**BMC project** — `supabase/bmc/migrations/`:
+
+```
+0001_init.sql    schema, RLS policies, participant-files storage bucket
+0002_seed.sql    build team, phase bands + milestones, workstreams,
+                 six session shells, two pricing scenarios
+```
+
+Both BMC migrations are idempotent — re-running them is safe.
+
+If you prefer the CLI, note that `supabase link` binds one project per
+`supabase/` directory, so it can only manage SimSoc's here. For BMC, use
+`psql` against the connection string in **Project Settings → Database**:
 
 ```bash
-npx supabase link --project-ref <your-project-ref>
-npx supabase db push
+psql "$BMC_DB_URL" -f supabase/bmc/migrations/0001_init.sql
+psql "$BMC_DB_URL" -f supabase/bmc/migrations/0002_seed.sql
 ```
-
-`0006` creates the `bmc_*` tables, the RLS policies, and the private
-`participant-files` storage bucket. `0007` seeds the six build-team members,
-the three phase bands with their milestones, the ten responsibility-matrix
-workstreams, six empty session shells, and the two pricing scenarios. Both are
-idempotent — re-running them is safe.
 
 ### Environment variables
 
 See `.env.example` for the annotated list. Summary:
 
-| Variable | Scope | Required |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | client + server | yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | yes |
-| `SUPABASE_SERVICE_ROLE_KEY` | **server only** | only for lead→participant invites |
-| `NEXT_PUBLIC_SITE_URL` | client + server | recommended (auth email links) |
-| `ANTHROPIC_API_KEY` | **server only** | only for the participant Assistant |
-| `ANTHROPIC_MODEL` | server | no — defaults to `claude-sonnet-5` |
+| Variable | Project | Scope | Required |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | SimSoc | client + server | for SimSoc |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | SimSoc | client + server | for SimSoc |
+| `NEXT_PUBLIC_BMC_SUPABASE_URL` | BMC | client + server | for BMC |
+| `NEXT_PUBLIC_BMC_SUPABASE_ANON_KEY` | BMC | client + server | for BMC |
+| `BMC_SUPABASE_SERVICE_ROLE_KEY` | BMC | **server only** | only for lead→participant invites |
+| `NEXT_PUBLIC_SITE_URL` | — | client + server | recommended (auth email links) |
+| `ANTHROPIC_API_KEY` | — | **server only** | only for the participant Assistant |
+| `ANTHROPIC_MODEL` | — | server | no — defaults to `claude-sonnet-5` |
 
-The service-role and Anthropic keys are read only inside server actions and
-route handlers. Neither is ever sent to the browser.
+Each app only needs its own project's variables; you can run one without
+configuring the other. The service-role and Anthropic keys are read only
+inside server actions and route handlers. Neither is ever sent to the browser.
 
 ---
 
@@ -147,8 +176,10 @@ There's a chicken-and-egg: the admin page requires an admin. Sign up through
 the app, then run this once in the Supabase SQL editor:
 
 ```sql
-update bmc_profiles set role = 'admin' where email = 'you@example.com';
+update profiles set role = 'admin' where email = 'you@example.com';
 ```
+
+(Run this in the **BMC** project, not SimSoc's.)
 
 From then on, roles are managed at `/bmc/admin`.
 
@@ -159,9 +190,10 @@ Either:
 - **From the app** — on `/bmc/leads`, enter the lead's email and press
   **Convert to participant**. This sends a Supabase invite email, sets the lead
   to Committed, and links the new account back to the lead record. Requires
-  `SUPABASE_SERVICE_ROLE_KEY`.
-- **From Supabase** — **Authentication → Users → Invite user**. The signup
-  trigger creates their `bmc_profiles` row as a participant automatically.
+  `BMC_SUPABASE_SERVICE_ROLE_KEY`.
+- **From Supabase** — in the **BMC** project, **Authentication → Users →
+  Invite user**. The signup trigger creates their `profiles` row as a
+  participant automatically.
 
 ---
 
@@ -172,11 +204,13 @@ Either:
    preset detects Next.js; no build-command changes are needed.
 3. **Settings → Environment Variables** — add every variable from
    `.env.example` for Production (and Preview, if you use preview
-   deployments). Set `NEXT_PUBLIC_SITE_URL` to the deployment's own URL.
+   deployments), taking care that the BMC values come from the BMC project.
+   Set `NEXT_PUBLIC_SITE_URL` to the deployment's own URL.
 4. **Deploy.**
-5. Back in Supabase, **Authentication → URL Configuration**: set the site URL
-   to the Vercel domain and add `https://<your-domain>/auth/confirm` as a
-   redirect URL, so magic links and invite emails land in the right place.
+5. Back in Supabase, set each project's **Authentication → URL Configuration**
+   to the Vercel domain, and add its own redirect URL:
+   `https://<your-domain>/auth/confirm` for the SimSoc project and
+   `https://<your-domain>/bmc/auth/confirm` for the BMC project.
 6. Visit `https://<your-domain>/bmc`, sign up, and promote yourself to admin
    with the SQL above.
 
@@ -210,10 +244,14 @@ src/app/bmc/                 BMC routes
   (app)/                     authenticated shell (topbar + nav)
     matrix/ sessions/ meeting/ roadmap/ leads/ pricing/ admin/
     dashboard/ program/ files/ assistant/
+  auth/confirm/              BMC magic-link / invite landing
 src/app/api/bmc/chat/        Assistant streaming route handler
 src/lib/bmc/                 config, types, auth guards, domain logic
+  supabase/                  client + session refresh for the BMC project
 src/components/bmc/          shared UI primitives
-supabase/migrations/         schema, RLS, seed
+supabase/migrations/         SimSoc project: schema, RLS
+supabase/bmc/migrations/     BMC project: schema, RLS, seed
+src/proxy.ts                 routes each request to the right project's auth
 ```
 
 Each feature keeps its server actions next to its page in an `actions.ts`, and
@@ -224,6 +262,6 @@ every action re-checks the caller's role before writing.
 ## SimSoc
 
 The original app is unchanged. See `UX_HANDOFF.md` for its design notes. Its
-routes, tables, and theme are untouched by the BMC work; the only shared file
-that changed is `src/lib/supabase/middleware.ts`, which now sends an
-unauthenticated `/bmc/*` request to `/bmc/login` instead of SimSoc's `/login`.
+routes, tables, Supabase project, and theme are untouched by the BMC work.
+The only shared file that changed is `src/proxy.ts`, which now dispatches
+`/bmc/*` to BMC's session handler before SimSoc's runs.

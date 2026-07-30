@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { getProfile } from "@/lib/bmc/auth";
 import { FILES_BUCKET } from "@/lib/bmc/files";
 
@@ -19,7 +19,7 @@ export async function GET(
   const supabase = await createClient();
 
   const query = supabase
-    .from("bmc_files")
+    .from("files")
     .select("storage_path, filename, owner_id")
     .eq("id", id);
 

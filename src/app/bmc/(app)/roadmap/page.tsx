@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import {
   ORGS,
@@ -80,12 +80,12 @@ export default async function RoadmapPage({
 
   const [{ data: milestoneData }, { data: profileData }] = await Promise.all([
     supabase
-      .from("bmc_roadmap_milestones")
+      .from("roadmap_milestones")
       .select("*")
       .order("phase")
       .order("sort_order"),
     supabase
-      .from("bmc_profiles")
+      .from("profiles")
       .select("id, email, full_name, org, role, business_name, avatar_url")
       .in("role", ["admin", "staff"])
       .order("full_name"),

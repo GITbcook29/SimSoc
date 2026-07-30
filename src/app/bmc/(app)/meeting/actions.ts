@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import {
   DEFAULT_SCORECARD_METRICS,
@@ -44,7 +44,7 @@ export async function startNewMeeting() {
   const supabase = await createClient();
 
   const { data: prior } = await supabase
-    .from("bmc_meetings")
+    .from("meetings")
     .select("id, attendees, title")
     .order("meeting_date", { ascending: false })
     .order("created_at", { ascending: false })
@@ -54,7 +54,7 @@ export async function startNewMeeting() {
   let attendees: string[] = (prior?.attendees as string[]) ?? [];
   if (attendees.length === 0) {
     const { data: roster } = await supabase
-      .from("bmc_team_roster")
+      .from("team_roster")
       .select("full_name")
       .eq("active", true)
       .order("sort_order");
@@ -62,7 +62,7 @@ export async function startNewMeeting() {
   }
 
   const { data: meeting, error } = await supabase
-    .from("bmc_meetings")
+    .from("meetings")
     .insert({
       title: prior?.title ?? "Build Team L10",
       attendees,
@@ -74,7 +74,7 @@ export async function startNewMeeting() {
 
   if (error || !meeting) throw new Error(error?.message ?? "Could not create meeting");
 
-  await supabase.from("bmc_meeting_segments").insert(
+  await supabase.from("meeting_segments").insert(
     MEETING_SEGMENTS.map((s) => ({
       meeting_id: meeting.id,
       segment_key: s.key,
@@ -88,7 +88,7 @@ export async function startNewMeeting() {
 
   if (prior) {
     const { data: priorMetrics } = await supabase
-      .from("bmc_scorecard_metrics")
+      .from("scorecard_metrics")
       .select("name, owner, goal, sort_order")
       .eq("meeting_id", prior.id)
       .order("sort_order");
@@ -101,7 +101,7 @@ export async function startNewMeeting() {
     }
   }
 
-  await supabase.from("bmc_scorecard_metrics").insert(
+  await supabase.from("scorecard_metrics").insert(
     metricSeed.map((m, i) => ({
       meeting_id: meeting.id,
       name: m.name,
@@ -113,13 +113,13 @@ export async function startNewMeeting() {
 
   // Carry forward open work from every earlier meeting, not just the last one.
   await supabase
-    .from("bmc_todos")
+    .from("todos")
     .update({ meeting_id: meeting.id })
     .eq("done", false)
     .neq("meeting_id", meeting.id);
 
   await supabase
-    .from("bmc_issues")
+    .from("issues")
     .update({ meeting_id: meeting.id })
     .eq("resolved", false)
     .neq("meeting_id", meeting.id);
@@ -134,7 +134,7 @@ export async function completeMeeting(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_meetings").update({ status: "complete" }).eq("id", id);
+  await supabase.from("meetings").update({ status: "complete" }).eq("id", id);
 
   revalidatePath(path(id));
   revalidatePath("/bmc/meeting");
@@ -146,7 +146,7 @@ export async function deleteMeeting(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_meetings").delete().eq("id", id);
+  await supabase.from("meetings").delete().eq("id", id);
 
   revalidatePath("/bmc/meeting");
   redirect("/bmc/meeting");
@@ -156,7 +156,7 @@ export async function setMeetingTitle(id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_meetings")
+    .from("meetings")
     .update({ title: value.trim() || "Build Team L10" })
     .eq("id", id);
   revalidatePath(path(id));
@@ -166,7 +166,7 @@ export async function setMeetingDate(id: string, value: string) {
   await requireTeam();
   if (!value) return;
   const supabase = await createClient();
-  await supabase.from("bmc_meetings").update({ meeting_date: value }).eq("id", id);
+  await supabase.from("meetings").update({ meeting_date: value }).eq("id", id);
   revalidatePath(path(id));
 }
 
@@ -174,7 +174,7 @@ export async function setCascading(id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_meetings")
+    .from("meetings")
     .update({ cascading: value.trim() || null })
     .eq("id", id);
   revalidatePath(path(id));
@@ -192,7 +192,7 @@ export async function setAttendees(formData: FormData) {
     .filter(Boolean);
 
   const supabase = await createClient();
-  await supabase.from("bmc_meetings").update({ attendees }).eq("id", id);
+  await supabase.from("meetings").update({ attendees }).eq("id", id);
   revalidatePath(path(id));
 }
 
@@ -201,7 +201,7 @@ export async function setRating(meetingId: string, attendee: string, value: stri
   const supabase = await createClient();
 
   const { data } = await supabase
-    .from("bmc_meetings")
+    .from("meetings")
     .select("rating")
     .eq("id", meetingId)
     .maybeSingle();
@@ -212,7 +212,7 @@ export async function setRating(meetingId: string, attendee: string, value: stri
   if (value === "" || Number.isNaN(n)) delete rating[attendee];
   else rating[attendee] = Math.min(10, Math.max(1, Math.round(n)));
 
-  await supabase.from("bmc_meetings").update({ rating }).eq("id", meetingId);
+  await supabase.from("meetings").update({ rating }).eq("id", meetingId);
   revalidatePath(path(meetingId));
 }
 
@@ -227,17 +227,17 @@ async function patchSegment(
 ) {
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_meeting_segments")
+    .from("meeting_segments")
     .select("id")
     .eq("meeting_id", meetingId)
     .eq("segment_key", segmentKey)
     .maybeSingle();
 
   if (data) {
-    await supabase.from("bmc_meeting_segments").update(patch).eq("id", data.id);
+    await supabase.from("meeting_segments").update(patch).eq("id", data.id);
   } else {
     await supabase
-      .from("bmc_meeting_segments")
+      .from("meeting_segments")
       .insert({ meeting_id: meetingId, segment_key: segmentKey, ...patch });
   }
 }
@@ -264,7 +264,7 @@ export async function setSegueBest(
   const supabase = await createClient();
 
   const { data } = await supabase
-    .from("bmc_meeting_segments")
+    .from("meeting_segments")
     .select("id, payload")
     .eq("meeting_id", meetingId)
     .eq("segment_key", "segue")
@@ -286,7 +286,7 @@ export async function addHeadline(formData: FormData) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_meeting_segments")
+    .from("meeting_segments")
     .select("payload")
     .eq("meeting_id", meetingId)
     .eq("segment_key", "headlines")
@@ -310,7 +310,7 @@ export async function removeHeadline(formData: FormData) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_meeting_segments")
+    .from("meeting_segments")
     .select("payload")
     .eq("meeting_id", meetingId)
     .eq("segment_key", "headlines")
@@ -342,7 +342,7 @@ export async function setMetricField(
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_scorecard_metrics")
+    .from("scorecard_metrics")
     .update({ [column]: value.trim() || null })
     .eq("id", id);
   revalidatePath(path(meetingId));
@@ -352,7 +352,7 @@ export async function setMetricStatus(meetingId: string, id: string, value: stri
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_scorecard_metrics")
+    .from("scorecard_metrics")
     .update({ status: asStatus(value) })
     .eq("id", id);
   revalidatePath(path(meetingId));
@@ -366,14 +366,14 @@ export async function addMetric(formData: FormData) {
 
   const supabase = await createClient();
   const { data: last } = await supabase
-    .from("bmc_scorecard_metrics")
+    .from("scorecard_metrics")
     .select("sort_order")
     .eq("meeting_id", meetingId)
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  await supabase.from("bmc_scorecard_metrics").insert({
+  await supabase.from("scorecard_metrics").insert({
     meeting_id: meetingId,
     name,
     sort_order: (last?.sort_order ?? 0) + 10,
@@ -388,7 +388,7 @@ export async function deleteMetric(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_scorecard_metrics").delete().eq("id", id);
+  await supabase.from("scorecard_metrics").delete().eq("id", id);
   revalidatePath(path(meetingId));
 }
 
@@ -399,21 +399,21 @@ export async function deleteMetric(formData: FormData) {
 export async function setRockTitle(meetingId: string, id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
-  await supabase.from("bmc_rocks").update({ title: value.trim() }).eq("id", id);
+  await supabase.from("rocks").update({ title: value.trim() }).eq("id", id);
   revalidatePath(path(meetingId));
 }
 
 export async function setRockStatus(meetingId: string, id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
-  await supabase.from("bmc_rocks").update({ status: asStatus(value) }).eq("id", id);
+  await supabase.from("rocks").update({ status: asStatus(value) }).eq("id", id);
   revalidatePath(path(meetingId));
 }
 
 export async function setRockOrg(meetingId: string, id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
-  await supabase.from("bmc_rocks").update({ org: asOrgOrNull(value) }).eq("id", id);
+  await supabase.from("rocks").update({ org: asOrgOrNull(value) }).eq("id", id);
   revalidatePath(path(meetingId));
 }
 
@@ -425,7 +425,7 @@ export async function addRock(formData: FormData) {
   if (!title) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_rocks").insert({ title, quarter });
+  await supabase.from("rocks").insert({ title, quarter });
   revalidatePath(path(meetingId));
 }
 
@@ -436,7 +436,7 @@ export async function deleteRock(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_rocks").delete().eq("id", id);
+  await supabase.from("rocks").delete().eq("id", id);
   revalidatePath(path(meetingId));
 }
 
@@ -451,14 +451,14 @@ export async function addTodo(formData: FormData) {
   if (!meetingId || !text) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_todos").insert({ meeting_id: meetingId, text });
+  await supabase.from("todos").insert({ meeting_id: meetingId, text });
   revalidatePath(path(meetingId));
 }
 
 export async function setTodoDone(meetingId: string, id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
-  await supabase.from("bmc_todos").update({ done: value === "true" }).eq("id", id);
+  await supabase.from("todos").update({ done: value === "true" }).eq("id", id);
   revalidatePath(path(meetingId));
 }
 
@@ -476,7 +476,7 @@ export async function setTodoField(
   }
   const supabase = await createClient();
   await supabase
-    .from("bmc_todos")
+    .from("todos")
     .update({ [column]: value.trim() || null })
     .eq("id", id);
   revalidatePath(path(meetingId));
@@ -486,7 +486,7 @@ export async function setTodoOwner(meetingId: string, id: string, value: string)
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_todos")
+    .from("todos")
     .update({ owner_profile_id: value || null })
     .eq("id", id);
   revalidatePath(path(meetingId));
@@ -499,7 +499,7 @@ export async function deleteTodo(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_todos").delete().eq("id", id);
+  await supabase.from("todos").delete().eq("id", id);
   revalidatePath(path(meetingId));
 }
 
@@ -514,7 +514,7 @@ export async function addIssue(formData: FormData) {
   if (!meetingId || !title) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_issues").insert({ meeting_id: meetingId, title });
+  await supabase.from("issues").insert({ meeting_id: meetingId, title });
   revalidatePath(path(meetingId));
 }
 
@@ -532,7 +532,7 @@ export async function setIssueField(
   }
   const supabase = await createClient();
   await supabase
-    .from("bmc_issues")
+    .from("issues")
     .update({ [column]: value.trim() || null })
     .eq("id", id);
   revalidatePath(path(meetingId));
@@ -544,21 +544,21 @@ export async function setIssuePriority(meetingId: string, id: string, value: str
   if (Number.isNaN(n) || n < 1 || n > 5) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_issues").update({ priority: n }).eq("id", id);
+  await supabase.from("issues").update({ priority: n }).eq("id", id);
   revalidatePath(path(meetingId));
 }
 
 export async function setIssueOrg(meetingId: string, id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
-  await supabase.from("bmc_issues").update({ org: asOrgOrNull(value) }).eq("id", id);
+  await supabase.from("issues").update({ org: asOrgOrNull(value) }).eq("id", id);
   revalidatePath(path(meetingId));
 }
 
 export async function setIssueStatus(meetingId: string, id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
-  await supabase.from("bmc_issues").update({ status: asStatus(value) }).eq("id", id);
+  await supabase.from("issues").update({ status: asStatus(value) }).eq("id", id);
   revalidatePath(path(meetingId));
 }
 
@@ -566,7 +566,7 @@ export async function setIssueOwner(meetingId: string, id: string, value: string
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_issues")
+    .from("issues")
     .update({ owner_profile_id: value || null })
     .eq("id", id);
   revalidatePath(path(meetingId));
@@ -576,7 +576,7 @@ export async function setIssueResolved(meetingId: string, id: string, value: str
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_issues")
+    .from("issues")
     .update({ resolved: value === "true" })
     .eq("id", id);
   revalidatePath(path(meetingId));
@@ -589,6 +589,6 @@ export async function deleteIssue(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_issues").delete().eq("id", id);
+  await supabase.from("issues").delete().eq("id", id);
   revalidatePath(path(meetingId));
 }

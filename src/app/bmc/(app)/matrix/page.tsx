@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { ORGS, ORG_COLOR, ORG_LABEL, type Org } from "@/lib/bmc/config";
 import type { MatrixRow, TeamMember } from "@/lib/bmc/types";
@@ -56,11 +56,11 @@ export default async function MatrixPage() {
 
   const [{ data: rowData }, { data: rosterData }] = await Promise.all([
     supabase
-      .from("bmc_responsibility_matrix")
+      .from("responsibility_matrix")
       .select("id, workstream, org, owner_profile_id, owner_name, raci, notes, sort_order")
       .order("sort_order"),
     supabase
-      .from("bmc_team_roster")
+      .from("team_roster")
       .select("id, full_name, org, role_title, email, profile_id, active, sort_order")
       .eq("active", true)
       .order("sort_order"),

@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { getProfile } from "@/lib/bmc/auth";
 import {
   HISTORY_LIMIT,
@@ -47,25 +47,25 @@ export async function POST(request: NextRequest) {
   const [{ data: historyData }, { data: sessionData }, { data: taskData }, { data: fileData }] =
     await Promise.all([
       supabase
-        .from("bmc_chat_messages")
+        .from("chat_messages")
         .select("id, participant_id, role, content, created_at")
         .eq("participant_id", profile.id)
         .order("created_at", { ascending: false })
         .limit(HISTORY_LIMIT),
       supabase
-        .from("bmc_sessions")
+        .from("sessions")
         .select(
           "id, session_number, session_date, title, arena_block, exit_momentum_block, breakout_takeaway, mentor_focus, recording_url, location, prep_checklist, status, published",
         )
         .eq("published", true)
         .order("session_number"),
       supabase
-        .from("bmc_participant_tasks")
+        .from("participant_tasks")
         .select("id, participant_id, source_session_id, text, due_date, done")
         .eq("participant_id", profile.id)
         .order("due_date", { nullsFirst: false }),
       supabase
-        .from("bmc_files")
+        .from("files")
         .select("id, owner_id, storage_path, filename, mime, size, scope, created_at")
         .eq("owner_id", profile.id)
         .order("created_at", { ascending: false }),
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     files: (fileData ?? []) as StoredFile[],
   });
 
-  await supabase.from("bmc_chat_messages").insert({
+  await supabase.from("chat_messages").insert({
     participant_id: profile.id,
     role: "user",
     content: userMessage,
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
               ? input.due_date
               : null;
 
-            const { error } = await supabase.from("bmc_participant_tasks").insert({
+            const { error } = await supabase.from("participant_tasks").insert({
               participant_id: profile.id,
               text,
               due_date: dueDate,
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(note));
       } finally {
         if (assistantText.trim()) {
-          await supabase.from("bmc_chat_messages").insert({
+          await supabase.from("chat_messages").insert({
             participant_id: profile.id,
             role: "assistant",
             content: assistantText,

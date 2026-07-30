@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- Business Mastery Cohort (BMC) — schema + Row Level Security
 --
--- Every table is prefixed `bmc_` because this Supabase project also hosts the
+-- Every table is prefixed `` because this Supabase project also hosts the
 -- SimSoc app; the prefix keeps the two schemas from colliding on generic names
 -- like `sessions`, `issues`, `leads`, or `files`.
 --
@@ -13,7 +13,7 @@
 -- Profiles — one row per auth user, carrying role and org
 -- ---------------------------------------------------------------------------
 
-create table if not exists bmc_profiles (
+create table if not exists profiles (
   id            uuid primary key references auth.users (id) on delete cascade,
   email         text,
   full_name     text not null default '',
@@ -27,14 +27,18 @@ create table if not exists bmc_profiles (
 );
 
 -- New signups land as participants. An admin promotes from there (see README).
-create or replace function bmc_handle_new_user()
+--
+-- `handle_new_user` is the name Supabase's own starter snippets use. On a
+-- fresh project that's fine; if you're reusing a project that already has one,
+-- this `create or replace` will overwrite it — check before running.
+create or replace function handle_new_user()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  insert into bmc_profiles (id, email, full_name)
+  insert into profiles (id, email, full_name)
   values (
     new.id,
     new.email,
@@ -45,22 +49,22 @@ begin
 end;
 $$;
 
-drop trigger if exists bmc_on_auth_user_created on auth.users;
-create trigger bmc_on_auth_user_created
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
   after insert on auth.users
-  for each row execute function bmc_handle_new_user();
+  for each row execute function handle_new_user();
 
 -- The build team roster is deliberately independent of auth.users: the people
 -- planning the cohort need to appear in owner pickers and meeting attendee
 -- lists before (and whether or not) they ever create a login. A roster entry
 -- links to a profile once that person signs up.
-create table if not exists bmc_team_roster (
+create table if not exists team_roster (
   id         uuid primary key default gen_random_uuid(),
   full_name  text not null,
   org        text check (org in ('palette', 'arena', 'exit_momentum')),
   role_title text,
   email      text,
-  profile_id uuid references bmc_profiles (id) on delete set null,
+  profile_id uuid references profiles (id) on delete set null,
   active     boolean not null default true,
   sort_order int not null default 0,
   created_at timestamptz not null default now(),
@@ -70,46 +74,46 @@ create table if not exists bmc_team_roster (
 -- ---------------------------------------------------------------------------
 -- Role helpers
 --
--- security definer so they read bmc_profiles without re-entering RLS — that is
--- what keeps the bmc_profiles policies below from recursing into themselves.
+-- security definer so they read profiles without re-entering RLS — that is
+-- what keeps the profiles policies below from recursing into themselves.
 -- ---------------------------------------------------------------------------
 
-create or replace function bmc_role()
+create or replace function profile_role()
 returns text
 language sql
 security definer
 set search_path = public
 stable
 as $$
-  select role from bmc_profiles where id = auth.uid();
+  select role from profiles where id = auth.uid();
 $$;
 
-create or replace function bmc_is_admin()
+create or replace function is_admin()
 returns boolean
 language sql
 security definer
 set search_path = public
 stable
 as $$
-  select coalesce(bmc_role() = 'admin', false);
+  select coalesce(profile_role() = 'admin', false);
 $$;
 
 -- Build-team access: admins and staff.
-create or replace function bmc_is_team()
+create or replace function is_team()
 returns boolean
 language sql
 security definer
 set search_path = public
 stable
 as $$
-  select coalesce(bmc_role() in ('admin', 'staff'), false);
+  select coalesce(profile_role() in ('admin', 'staff'), false);
 $$;
 
 -- ---------------------------------------------------------------------------
 -- updated_at maintenance
 -- ---------------------------------------------------------------------------
 
-create or replace function bmc_touch_updated_at()
+create or replace function touch_updated_at()
 returns trigger
 language plpgsql
 as $$
@@ -123,7 +127,7 @@ $$;
 -- Build-team tables
 -- ---------------------------------------------------------------------------
 
-create table if not exists bmc_meetings (
+create table if not exists meetings (
   id           uuid primary key default gen_random_uuid(),
   meeting_date date not null default current_date,
   title        text not null default 'Build Team L10',
@@ -137,9 +141,9 @@ create table if not exists bmc_meetings (
   updated_at   timestamptz not null default now()
 );
 
-create table if not exists bmc_meeting_segments (
+create table if not exists meeting_segments (
   id            uuid primary key default gen_random_uuid(),
-  meeting_id    uuid not null references bmc_meetings (id) on delete cascade,
+  meeting_id    uuid not null references meetings (id) on delete cascade,
   segment_key   text not null,
   payload       jsonb not null default '{}'::jsonb,
   timer_seconds int not null default 0,
@@ -148,9 +152,9 @@ create table if not exists bmc_meeting_segments (
   unique (meeting_id, segment_key)
 );
 
-create table if not exists bmc_scorecard_metrics (
+create table if not exists scorecard_metrics (
   id         uuid primary key default gen_random_uuid(),
-  meeting_id uuid not null references bmc_meetings (id) on delete cascade,
+  meeting_id uuid not null references meetings (id) on delete cascade,
   name       text not null,
   owner      text,
   goal       text,
@@ -162,10 +166,10 @@ create table if not exists bmc_scorecard_metrics (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists bmc_rocks (
+create table if not exists rocks (
   id               uuid primary key default gen_random_uuid(),
   title            text not null default '',
-  owner_profile_id uuid references bmc_profiles (id) on delete set null,
+  owner_profile_id uuid references profiles (id) on delete set null,
   org              text check (org in ('palette', 'arena', 'exit_momentum', 'shared')),
   quarter          text not null default 'q3_2026',
   status           text not null default 'not_started'
@@ -175,27 +179,27 @@ create table if not exists bmc_rocks (
   updated_at       timestamptz not null default now()
 );
 
-create table if not exists bmc_issues (
+create table if not exists issues (
   id               uuid primary key default gen_random_uuid(),
-  meeting_id       uuid references bmc_meetings (id) on delete set null,
+  meeting_id       uuid references meetings (id) on delete set null,
   title            text not null default '',
   notes            text,
   org              text check (org in ('palette', 'arena', 'exit_momentum', 'shared')),
   priority         int not null default 3 check (priority between 1 and 5),
   status           text not null default 'not_started'
                      check (status in ('not_started', 'in_progress', 'on_track', 'off_track', 'done')),
-  owner_profile_id uuid references bmc_profiles (id) on delete set null,
+  owner_profile_id uuid references profiles (id) on delete set null,
   due_date         date,
   resolved         boolean not null default false,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
 
-create table if not exists bmc_todos (
+create table if not exists todos (
   id               uuid primary key default gen_random_uuid(),
-  meeting_id       uuid references bmc_meetings (id) on delete set null,
+  meeting_id       uuid references meetings (id) on delete set null,
   text             text not null default '',
-  owner_profile_id uuid references bmc_profiles (id) on delete set null,
+  owner_profile_id uuid references profiles (id) on delete set null,
   org              text check (org in ('palette', 'arena', 'exit_momentum', 'shared')),
   due_date         date,
   done             boolean not null default false,
@@ -203,12 +207,12 @@ create table if not exists bmc_todos (
   updated_at       timestamptz not null default now()
 );
 
-create table if not exists bmc_roadmap_milestones (
+create table if not exists roadmap_milestones (
   id               uuid primary key default gen_random_uuid(),
   phase            text not null check (phase in ('q3_2026', 'q4_2026', 'q1_2027')),
   title            text not null default '',
   org              text check (org in ('palette', 'arena', 'exit_momentum', 'shared')),
-  owner_profile_id uuid references bmc_profiles (id) on delete set null,
+  owner_profile_id uuid references profiles (id) on delete set null,
   start_date       date,
   due_date         date,
   status           text not null default 'not_started'
@@ -221,12 +225,12 @@ create table if not exists bmc_roadmap_milestones (
 
 -- One row per (workstream, org) pairing, so a workstream can carry a full
 -- RACI across all three orgs plus a named owner per assignment.
-create table if not exists bmc_responsibility_matrix (
+create table if not exists responsibility_matrix (
   id               uuid primary key default gen_random_uuid(),
   workstream       text not null,
   org              text not null
                      check (org in ('palette', 'arena', 'exit_momentum', 'shared')),
-  owner_profile_id uuid references bmc_profiles (id) on delete set null,
+  owner_profile_id uuid references profiles (id) on delete set null,
   owner_name       text,
   raci             text check (raci in ('R', 'A', 'C', 'I')),
   notes            text,
@@ -236,7 +240,7 @@ create table if not exists bmc_responsibility_matrix (
   unique (workstream, org)
 );
 
-create table if not exists bmc_sessions (
+create table if not exists sessions (
   id                  uuid primary key default gen_random_uuid(),
   session_number      int not null unique check (session_number between 1 and 12),
   session_date        date,
@@ -257,7 +261,7 @@ create table if not exists bmc_sessions (
   updated_at          timestamptz not null default now()
 );
 
-create table if not exists bmc_leads (
+create table if not exists leads (
   id                       uuid primary key default gen_random_uuid(),
   name                     text not null default '',
   business                 text,
@@ -267,7 +271,7 @@ create table if not exists bmc_leads (
   employees                int,
   source                   text,
   referred_by              text,
-  owner_profile_id         uuid references bmc_profiles (id) on delete set null,
+  owner_profile_id         uuid references profiles (id) on delete set null,
   owner_org                text check (owner_org in ('palette', 'arena', 'exit_momentum', 'shared')),
   stage                    text not null default 'prospect'
                              check (stage in ('prospect', 'contacted', 'info_session_invited',
@@ -276,12 +280,12 @@ create table if not exists bmc_leads (
   next_follow_up           date,
   fit_score                int check (fit_score between 0 and 100),
   notes                    text,
-  converted_participant_id uuid references bmc_profiles (id) on delete set null,
+  converted_participant_id uuid references profiles (id) on delete set null,
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now()
 );
 
-create table if not exists bmc_pricing_scenarios (
+create table if not exists pricing_scenarios (
   id                    uuid primary key default gen_random_uuid(),
   name                  text not null default 'Scenario',
   price_per_participant numeric,                            -- deliberately null: TBD
@@ -298,14 +302,14 @@ create table if not exists bmc_pricing_scenarios (
 -- Participant tables
 -- ---------------------------------------------------------------------------
 
-create table if not exists bmc_participant_tasks (
+create table if not exists participant_tasks (
   id                uuid primary key default gen_random_uuid(),
-  participant_id    uuid not null references bmc_profiles (id) on delete cascade,
-  source_session_id uuid references bmc_sessions (id) on delete set null,
+  participant_id    uuid not null references profiles (id) on delete cascade,
+  source_session_id uuid references sessions (id) on delete set null,
   text              text not null default '',
   due_date          date,
   done              boolean not null default false,
-  created_by        uuid references bmc_profiles (id) on delete set null,
+  created_by        uuid references profiles (id) on delete set null,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
@@ -315,12 +319,12 @@ create table if not exists bmc_participant_tasks (
 -- unfiltered on purpose: ON CONFLICT can't infer a partial index, and NULLs
 -- compare as distinct, so self-created tasks (null source_session_id) are
 -- still unconstrained.
-create unique index if not exists bmc_participant_tasks_session_unique
-  on bmc_participant_tasks (participant_id, source_session_id);
+create unique index if not exists participant_tasks_session_unique
+  on participant_tasks (participant_id, source_session_id);
 
-create table if not exists bmc_files (
+create table if not exists files (
   id           uuid primary key default gen_random_uuid(),
-  owner_id     uuid not null references bmc_profiles (id) on delete cascade,
+  owner_id     uuid not null references profiles (id) on delete cascade,
   storage_path text not null unique,
   filename     text not null,
   mime         text,
@@ -331,20 +335,20 @@ create table if not exists bmc_files (
   updated_at   timestamptz not null default now()
 );
 
-create table if not exists bmc_chat_messages (
+create table if not exists chat_messages (
   id             uuid primary key default gen_random_uuid(),
-  participant_id uuid not null references bmc_profiles (id) on delete cascade,
+  participant_id uuid not null references profiles (id) on delete cascade,
   role           text not null check (role in ('user', 'assistant')),
   content        text not null,
   created_at     timestamptz not null default now()
 );
 
-create index if not exists bmc_chat_messages_participant_idx
-  on bmc_chat_messages (participant_id, created_at);
-create index if not exists bmc_participant_tasks_participant_idx
-  on bmc_participant_tasks (participant_id);
-create index if not exists bmc_files_owner_idx on bmc_files (owner_id);
-create index if not exists bmc_leads_stage_idx on bmc_leads (stage);
+create index if not exists chat_messages_participant_idx
+  on chat_messages (participant_id, created_at);
+create index if not exists participant_tasks_participant_idx
+  on participant_tasks (participant_id);
+create index if not exists files_owner_idx on files (owner_id);
+create index if not exists leads_stage_idx on leads (stage);
 
 -- ---------------------------------------------------------------------------
 -- updated_at triggers
@@ -355,14 +359,14 @@ declare
   t text;
 begin
   foreach t in array array[
-    'bmc_profiles', 'bmc_team_roster', 'bmc_meetings', 'bmc_meeting_segments', 'bmc_scorecard_metrics',
-    'bmc_rocks', 'bmc_issues', 'bmc_todos', 'bmc_roadmap_milestones',
-    'bmc_responsibility_matrix', 'bmc_sessions', 'bmc_leads', 'bmc_pricing_scenarios',
-    'bmc_participant_tasks', 'bmc_files'
+    'profiles', 'team_roster', 'meetings', 'meeting_segments', 'scorecard_metrics',
+    'rocks', 'issues', 'todos', 'roadmap_milestones',
+    'responsibility_matrix', 'sessions', 'leads', 'pricing_scenarios',
+    'participant_tasks', 'files'
   ] loop
     execute format('drop trigger if exists %I on %I', t || '_touch', t);
     execute format(
-      'create trigger %I before update on %I for each row execute function bmc_touch_updated_at()',
+      'create trigger %I before update on %I for each row execute function touch_updated_at()',
       t || '_touch', t
     );
   end loop;
@@ -373,36 +377,36 @@ $$;
 -- Row Level Security
 -- ---------------------------------------------------------------------------
 
-alter table bmc_profiles              enable row level security;
-alter table bmc_team_roster           enable row level security;
-alter table bmc_meetings              enable row level security;
-alter table bmc_meeting_segments      enable row level security;
-alter table bmc_scorecard_metrics     enable row level security;
-alter table bmc_rocks                 enable row level security;
-alter table bmc_issues                enable row level security;
-alter table bmc_todos                 enable row level security;
-alter table bmc_roadmap_milestones    enable row level security;
-alter table bmc_responsibility_matrix enable row level security;
-alter table bmc_sessions              enable row level security;
-alter table bmc_leads                 enable row level security;
-alter table bmc_pricing_scenarios     enable row level security;
-alter table bmc_participant_tasks     enable row level security;
-alter table bmc_files                 enable row level security;
-alter table bmc_chat_messages         enable row level security;
+alter table profiles              enable row level security;
+alter table team_roster           enable row level security;
+alter table meetings              enable row level security;
+alter table meeting_segments      enable row level security;
+alter table scorecard_metrics     enable row level security;
+alter table rocks                 enable row level security;
+alter table issues                enable row level security;
+alter table todos                 enable row level security;
+alter table roadmap_milestones    enable row level security;
+alter table responsibility_matrix enable row level security;
+alter table sessions              enable row level security;
+alter table leads                 enable row level security;
+alter table pricing_scenarios     enable row level security;
+alter table participant_tasks     enable row level security;
+alter table files                 enable row level security;
+alter table chat_messages         enable row level security;
 
 -- Profiles: everyone reads their own row; the build team reads all (they need
 -- names for owner pickers); only admins write anyone else's.
-drop policy if exists bmc_profiles_select_self on bmc_profiles;
-create policy bmc_profiles_select_self on bmc_profiles
-  for select using (id = auth.uid() or bmc_is_team());
+drop policy if exists profiles_select_self on profiles;
+create policy profiles_select_self on profiles
+  for select using (id = auth.uid() or is_team());
 
-drop policy if exists bmc_profiles_update_self on bmc_profiles;
-create policy bmc_profiles_update_self on bmc_profiles
+drop policy if exists profiles_update_self on profiles;
+create policy profiles_update_self on profiles
   for update using (id = auth.uid()) with check (id = auth.uid());
 
-drop policy if exists bmc_profiles_admin_all on bmc_profiles;
-create policy bmc_profiles_admin_all on bmc_profiles
-  for all using (bmc_is_admin()) with check (bmc_is_admin());
+drop policy if exists profiles_admin_all on profiles;
+create policy profiles_admin_all on profiles
+  for all using (is_admin()) with check (is_admin());
 
 -- Build-team tables: full access for admin + staff, invisible to participants.
 do $$
@@ -410,13 +414,13 @@ declare
   t text;
 begin
   foreach t in array array[
-    'bmc_meetings', 'bmc_meeting_segments', 'bmc_scorecard_metrics', 'bmc_rocks',
-    'bmc_issues', 'bmc_todos', 'bmc_roadmap_milestones', 'bmc_responsibility_matrix',
-    'bmc_leads', 'bmc_pricing_scenarios', 'bmc_team_roster'
+    'meetings', 'meeting_segments', 'scorecard_metrics', 'rocks',
+    'issues', 'todos', 'roadmap_milestones', 'responsibility_matrix',
+    'leads', 'pricing_scenarios', 'team_roster'
   ] loop
     execute format('drop policy if exists %I on %I', t || '_team', t);
     execute format(
-      'create policy %I on %I for all using (bmc_is_team()) with check (bmc_is_team())',
+      'create policy %I on %I for all using (is_team()) with check (is_team())',
       t || '_team', t
     );
   end loop;
@@ -424,42 +428,42 @@ end;
 $$;
 
 -- Sessions: build team writes; participants read published sessions only.
-drop policy if exists bmc_sessions_team on bmc_sessions;
-create policy bmc_sessions_team on bmc_sessions
-  for all using (bmc_is_team()) with check (bmc_is_team());
+drop policy if exists sessions_team on sessions;
+create policy sessions_team on sessions
+  for all using (is_team()) with check (is_team());
 
-drop policy if exists bmc_sessions_participant_read on bmc_sessions;
-create policy bmc_sessions_participant_read on bmc_sessions
+drop policy if exists sessions_participant_read on sessions;
+create policy sessions_participant_read on sessions
   for select using (published and auth.uid() is not null);
 
 -- Participant tasks: the participant sees and updates their own; the build
 -- team can see and assign across participants.
-drop policy if exists bmc_participant_tasks_own on bmc_participant_tasks;
-create policy bmc_participant_tasks_own on bmc_participant_tasks
+drop policy if exists participant_tasks_own on participant_tasks;
+create policy participant_tasks_own on participant_tasks
   for all using (participant_id = auth.uid()) with check (participant_id = auth.uid());
 
-drop policy if exists bmc_participant_tasks_team on bmc_participant_tasks;
-create policy bmc_participant_tasks_team on bmc_participant_tasks
-  for all using (bmc_is_team()) with check (bmc_is_team());
+drop policy if exists participant_tasks_team on participant_tasks;
+create policy participant_tasks_team on participant_tasks
+  for all using (is_team()) with check (is_team());
 
 -- Files: strictly the owner, plus admins. Staff deliberately excluded — a
 -- participant's uploaded financials are not build-team material.
-drop policy if exists bmc_files_own on bmc_files;
-create policy bmc_files_own on bmc_files
+drop policy if exists files_own on files;
+create policy files_own on files
   for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
-drop policy if exists bmc_files_admin on bmc_files;
-create policy bmc_files_admin on bmc_files
-  for all using (bmc_is_admin()) with check (bmc_is_admin());
+drop policy if exists files_admin on files;
+create policy files_admin on files
+  for all using (is_admin()) with check (is_admin());
 
 -- Chat: strictly the participant's own thread, plus admins.
-drop policy if exists bmc_chat_own on bmc_chat_messages;
-create policy bmc_chat_own on bmc_chat_messages
+drop policy if exists chat_own on chat_messages;
+create policy chat_own on chat_messages
   for all using (participant_id = auth.uid()) with check (participant_id = auth.uid());
 
-drop policy if exists bmc_chat_admin on bmc_chat_messages;
-create policy bmc_chat_admin on bmc_chat_messages
-  for all using (bmc_is_admin()) with check (bmc_is_admin());
+drop policy if exists chat_admin on chat_messages;
+create policy chat_admin on chat_messages
+  for all using (is_admin()) with check (is_admin());
 
 -- ---------------------------------------------------------------------------
 -- Storage: private bucket for participant uploads
@@ -472,23 +476,23 @@ insert into storage.buckets (id, name, public)
 values ('participant-files', 'participant-files', false)
 on conflict (id) do nothing;
 
-drop policy if exists bmc_storage_own_read on storage.objects;
-create policy bmc_storage_own_read on storage.objects
+drop policy if exists storage_own_read on storage.objects;
+create policy storage_own_read on storage.objects
   for select using (
     bucket_id = 'participant-files'
-    and (owner = auth.uid() or (storage.foldername(name))[1] = auth.uid()::text or bmc_is_admin())
+    and (owner = auth.uid() or (storage.foldername(name))[1] = auth.uid()::text or is_admin())
   );
 
-drop policy if exists bmc_storage_own_insert on storage.objects;
-create policy bmc_storage_own_insert on storage.objects
+drop policy if exists storage_own_insert on storage.objects;
+create policy storage_own_insert on storage.objects
   for insert with check (
     bucket_id = 'participant-files'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
-drop policy if exists bmc_storage_own_delete on storage.objects;
-create policy bmc_storage_own_delete on storage.objects
+drop policy if exists storage_own_delete on storage.objects;
+create policy storage_own_delete on storage.objects
   for delete using (
     bucket_id = 'participant-files'
-    and ((storage.foldername(name))[1] = auth.uid()::text or bmc_is_admin())
+    and ((storage.foldername(name))[1] = auth.uid()::text or is_admin())
   );

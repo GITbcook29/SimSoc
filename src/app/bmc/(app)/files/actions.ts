@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireProfile } from "@/lib/bmc/auth";
 import {
   ACCEPTED_MIME,
@@ -52,7 +52,7 @@ export async function uploadFile(formData: FormData) {
 
   if (uploadError) backWith({ error: uploadError.message });
 
-  const { error: rowError } = await supabase.from("bmc_files").insert({
+  const { error: rowError } = await supabase.from("files").insert({
     owner_id: me.id,
     storage_path: key,
     filename: file.name,
@@ -78,7 +78,7 @@ export async function deleteFile(formData: FormData) {
 
   const supabase = await createClient();
   const { data: row } = await supabase
-    .from("bmc_files")
+    .from("files")
     .select("id, storage_path, owner_id")
     .eq("id", id)
     .eq("owner_id", me.id)
@@ -87,7 +87,7 @@ export async function deleteFile(formData: FormData) {
   if (!row) backWith({ error: "That file isn't yours to delete." });
 
   await supabase.storage.from(FILES_BUCKET).remove([row.storage_path]);
-  await supabase.from("bmc_files").delete().eq("id", id).eq("owner_id", me.id);
+  await supabase.from("files").delete().eq("id", id).eq("owner_id", me.id);
 
   revalidatePath(PATH);
   backWith({ message: "File deleted." });

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireAdmin } from "@/lib/bmc/auth";
 import { ORGS, ORG_LABEL, ROLES } from "@/lib/bmc/config";
 import type { Profile, TeamMember } from "@/lib/bmc/types";
@@ -38,12 +38,12 @@ export default async function AdminPage() {
 
   const [{ data: profileData }, { data: rosterData }] = await Promise.all([
     supabase
-      .from("bmc_profiles")
+      .from("profiles")
       .select("id, email, full_name, org, role, business_name, avatar_url")
       .order("role")
       .order("full_name"),
     supabase
-      .from("bmc_team_roster")
+      .from("team_roster")
       .select("id, full_name, org, role_title, email, profile_id, active, sort_order")
       .order("sort_order"),
   ]);

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import {
   ICP_GUARDRAILS,
@@ -63,9 +63,9 @@ export default async function LeadsPage({
 
   const supabase = await createClient();
   const [{ data: leadData }, { data: profileData }] = await Promise.all([
-    supabase.from("bmc_leads").select("*").order("created_at", { ascending: false }),
+    supabase.from("leads").select("*").order("created_at", { ascending: false }),
     supabase
-      .from("bmc_profiles")
+      .from("profiles")
       .select("id, email, full_name, org, role, business_name, avatar_url")
       .in("role", ["admin", "staff"])
       .order("full_name"),

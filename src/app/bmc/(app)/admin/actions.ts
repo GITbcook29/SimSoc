@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireAdmin } from "@/lib/bmc/auth";
 import { ORGS, ROLES, type Org, type Role } from "@/lib/bmc/config";
 
@@ -21,7 +21,7 @@ export async function setProfileRole(id: string, value: string) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_profiles")
+    .from("profiles")
     .update({ role: value as Role })
     .eq("id", id);
 
@@ -36,7 +36,7 @@ export async function setProfileOrg(id: string, value: string) {
   }
 
   const supabase = await createClient();
-  await supabase.from("bmc_profiles").update({ org }).eq("id", id);
+  await supabase.from("profiles").update({ org }).eq("id", id);
   revalidatePath(PATH);
 }
 
@@ -50,7 +50,7 @@ export async function setProfileField(id: string, column: string, value: string)
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_profiles")
+    .from("profiles")
     .update({ [column]: value.trim() || null })
     .eq("id", id);
 
@@ -69,7 +69,7 @@ export async function setRosterField(id: string, column: string, value: string) 
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_team_roster")
+    .from("team_roster")
     .update({ [column]: value.trim() || null })
     .eq("id", id);
 
@@ -84,7 +84,7 @@ export async function setRosterOrg(id: string, value: string) {
   }
 
   const supabase = await createClient();
-  await supabase.from("bmc_team_roster").update({ org }).eq("id", id);
+  await supabase.from("team_roster").update({ org }).eq("id", id);
   revalidatePath(PATH);
 }
 
@@ -95,13 +95,13 @@ export async function addRosterMember(formData: FormData) {
 
   const supabase = await createClient();
   const { data: last } = await supabase
-    .from("bmc_team_roster")
+    .from("team_roster")
     .select("sort_order")
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  await supabase.from("bmc_team_roster").insert({
+  await supabase.from("team_roster").insert({
     full_name: fullName,
     role_title: String(formData.get("role_title") ?? "").trim() || null,
     sort_order: (last?.sort_order ?? 0) + 10,
@@ -116,6 +116,6 @@ export async function removeRosterMember(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_team_roster").delete().eq("id", id);
+  await supabase.from("team_roster").delete().eq("id", id);
   revalidatePath(PATH);
 }

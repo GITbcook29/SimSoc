@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { STATUSES, type Status } from "@/lib/bmc/config";
 import type { ArenaBlock, ExitMomentumBlock, PrepItem } from "@/lib/bmc/types";
@@ -33,7 +33,7 @@ export async function setSessionField(
   const trimmed = value.trim();
   const supabase = await createClient();
   await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .update({ [column as ScalarColumn]: trimmed || null })
     .eq("id", id);
 
@@ -49,7 +49,7 @@ export async function setSessionStatus(id: string, value: string) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .update({ status: value as Status })
     .eq("id", id);
 
@@ -74,7 +74,7 @@ async function patchBlock(
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .select(column)
     .eq("id", id)
     .maybeSingle();
@@ -90,7 +90,7 @@ async function patchBlock(
   else delete next[key];
 
   await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .update({ [column]: next })
     .eq("id", id);
 
@@ -119,7 +119,7 @@ export async function togglePrepItem(id: string, index: number, value: string) {
   const supabase = await createClient();
 
   const { data } = await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .select("prep_checklist")
     .eq("id", id)
     .maybeSingle();
@@ -132,7 +132,7 @@ export async function togglePrepItem(id: string, index: number, value: string) {
     i === index ? { ...item, done: value === "true" } : item,
   );
 
-  await supabase.from("bmc_sessions").update({ prep_checklist: next }).eq("id", id);
+  await supabase.from("sessions").update({ prep_checklist: next }).eq("id", id);
   revalidatePath(PATH);
 }
 
@@ -144,7 +144,7 @@ export async function addPrepItem(formData: FormData) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .select("prep_checklist")
     .eq("id", id)
     .maybeSingle();
@@ -152,7 +152,7 @@ export async function addPrepItem(formData: FormData) {
 
   const list = (data.prep_checklist ?? []) as PrepItem[];
   await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .update({ prep_checklist: [...list, { text, done: false }] })
     .eq("id", id);
 
@@ -167,7 +167,7 @@ export async function removePrepItem(formData: FormData) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .select("prep_checklist")
     .eq("id", id)
     .maybeSingle();
@@ -175,7 +175,7 @@ export async function removePrepItem(formData: FormData) {
 
   const list = (data.prep_checklist ?? []) as PrepItem[];
   await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .update({ prep_checklist: list.filter((_, i) => i !== index) })
     .eq("id", id);
 
@@ -189,7 +189,7 @@ export async function togglePublished(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_sessions").update({ published: publish }).eq("id", id);
+  await supabase.from("sessions").update({ published: publish }).eq("id", id);
 
   revalidatePath(PATH);
   revalidatePath("/bmc/program");
@@ -209,21 +209,21 @@ export async function pushTakeawayToParticipants(formData: FormData) {
   const supabase = await createClient();
 
   const { data: session } = await supabase
-    .from("bmc_sessions")
+    .from("sessions")
     .select("id, session_number, breakout_takeaway, session_date")
     .eq("id", id)
     .maybeSingle();
   if (!session?.breakout_takeaway?.trim()) return;
 
   const { data: participants } = await supabase
-    .from("bmc_profiles")
+    .from("profiles")
     .select("id")
     .eq("role", "participant");
   if (!participants?.length) return;
 
   const text = `Session ${session.session_number}: ${session.breakout_takeaway.trim()}`;
 
-  await supabase.from("bmc_participant_tasks").upsert(
+  await supabase.from("participant_tasks").upsert(
     participants.map((p) => ({
       participant_id: p.id,
       source_session_id: session.id,

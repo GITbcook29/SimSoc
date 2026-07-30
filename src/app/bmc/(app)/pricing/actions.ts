@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { ORGS, type Org } from "@/lib/bmc/config";
 import type { CostItem } from "@/lib/bmc/types";
@@ -15,7 +15,7 @@ export async function setScenarioField(id: string, column: string, value: string
 
   if (column === "name" || column === "notes") {
     await supabase
-      .from("bmc_pricing_scenarios")
+      .from("pricing_scenarios")
       .update({ [column]: trimmed || (column === "name" ? "Scenario" : null) })
       .eq("id", id);
   } else if (column === "price_per_participant") {
@@ -23,14 +23,14 @@ export async function setScenarioField(id: string, column: string, value: string
     const n = trimmed === "" ? null : Number(trimmed);
     if (n !== null && (Number.isNaN(n) || n < 0)) return;
     await supabase
-      .from("bmc_pricing_scenarios")
+      .from("pricing_scenarios")
       .update({ price_per_participant: n })
       .eq("id", id);
   } else if (column === "cohort_size") {
     const n = Number(trimmed);
     if (Number.isNaN(n) || n < 0) return;
     await supabase
-      .from("bmc_pricing_scenarios")
+      .from("pricing_scenarios")
       .update({ cohort_size: Math.round(n) })
       .eq("id", id);
   } else {
@@ -51,7 +51,7 @@ export async function setOrgSplit(id: string, org: string, value: string) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_pricing_scenarios")
+    .from("pricing_scenarios")
     .select("org_split")
     .eq("id", id)
     .maybeSingle();
@@ -61,7 +61,7 @@ export async function setOrgSplit(id: string, org: string, value: string) {
   split[org as Org] = n;
 
   await supabase
-    .from("bmc_pricing_scenarios")
+    .from("pricing_scenarios")
     .update({ org_split: split })
     .eq("id", id);
 
@@ -70,14 +70,14 @@ export async function setOrgSplit(id: string, org: string, value: string) {
 
 async function writeCostItems(id: string, items: CostItem[]) {
   const supabase = await createClient();
-  await supabase.from("bmc_pricing_scenarios").update({ cost_items: items }).eq("id", id);
+  await supabase.from("pricing_scenarios").update({ cost_items: items }).eq("id", id);
   revalidatePath(PATH);
 }
 
 async function readCostItems(id: string): Promise<CostItem[] | null> {
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_pricing_scenarios")
+    .from("pricing_scenarios")
     .select("cost_items")
     .eq("id", id)
     .maybeSingle();
@@ -158,13 +158,13 @@ export async function addScenario(formData: FormData) {
 
   const supabase = await createClient();
   const { data: last } = await supabase
-    .from("bmc_pricing_scenarios")
+    .from("pricing_scenarios")
     .select("sort_order")
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  await supabase.from("bmc_pricing_scenarios").insert({
+  await supabase.from("pricing_scenarios").insert({
     name,
     cohort_size: 15,
     cost_items: [
@@ -187,6 +187,6 @@ export async function deleteScenario(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_pricing_scenarios").delete().eq("id", id);
+  await supabase.from("pricing_scenarios").delete().eq("id", id);
   revalidatePath(PATH);
 }

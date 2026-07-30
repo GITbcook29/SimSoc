@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import {
   MEETING_SEGMENTS,
@@ -98,33 +98,33 @@ export default async function MeetingPage({
     { data: profileData },
   ] = await Promise.all([
     supabase
-      .from("bmc_meetings")
+      .from("meetings")
       .select("id, meeting_date, title, status, started_at, attendees, rating, cascading")
       .eq("id", id)
       .maybeSingle(),
     supabase
-      .from("bmc_meeting_segments")
+      .from("meeting_segments")
       .select("id, meeting_id, segment_key, payload, timer_seconds")
       .eq("meeting_id", id),
     supabase
-      .from("bmc_scorecard_metrics")
+      .from("scorecard_metrics")
       .select("*")
       .eq("meeting_id", id)
       .order("sort_order"),
-    supabase.from("bmc_rocks").select("*").order("sort_order"),
+    supabase.from("rocks").select("*").order("sort_order"),
     supabase
-      .from("bmc_todos")
+      .from("todos")
       .select("*")
       .eq("meeting_id", id)
       .order("created_at"),
     supabase
-      .from("bmc_issues")
+      .from("issues")
       .select("*")
       .eq("meeting_id", id)
       .order("priority")
       .order("created_at"),
     supabase
-      .from("bmc_profiles")
+      .from("profiles")
       .select("id, email, full_name, org, role, business_name, avatar_url")
       .in("role", ["admin", "staff"])
       .order("full_name"),

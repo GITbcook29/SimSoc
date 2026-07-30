@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { ORGS, PHASES, STATUSES, type Org, type Phase, type Status } from "@/lib/bmc/config";
 
@@ -17,7 +17,7 @@ export async function setMilestoneField(id: string, column: string, value: strin
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .update({ [column]: value.trim() || null })
     .eq("id", id);
 
@@ -32,7 +32,7 @@ export async function setMilestoneStatus(id: string, value: string) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .update({ status: value as Status })
     .eq("id", id);
 
@@ -47,7 +47,7 @@ export async function setMilestoneOrg(id: string, value: string) {
   }
 
   const supabase = await createClient();
-  await supabase.from("bmc_roadmap_milestones").update({ org }).eq("id", id);
+  await supabase.from("roadmap_milestones").update({ org }).eq("id", id);
   revalidatePath(PATH);
 }
 
@@ -55,7 +55,7 @@ export async function setMilestoneOwner(id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .update({ owner_profile_id: value || null })
     .eq("id", id);
   revalidatePath(PATH);
@@ -69,14 +69,14 @@ export async function addMilestone(formData: FormData) {
 
   const supabase = await createClient();
   const { data: last } = await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .select("sort_order")
     .eq("phase", phase)
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  await supabase.from("bmc_roadmap_milestones").insert({
+  await supabase.from("roadmap_milestones").insert({
     phase: phase as Phase,
     title,
     sort_order: (last?.sort_order ?? 0) + 10,
@@ -95,15 +95,15 @@ export async function deleteMilestone(formData: FormData) {
   // Drop the milestone, then clear it from anything that depended on it so no
   // dangling ids are left behind in the arrays.
   const { data: dependents } = await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .select("id, dependency_ids")
     .contains("dependency_ids", [id]);
 
-  await supabase.from("bmc_roadmap_milestones").delete().eq("id", id);
+  await supabase.from("roadmap_milestones").delete().eq("id", id);
 
   for (const d of dependents ?? []) {
     await supabase
-      .from("bmc_roadmap_milestones")
+      .from("roadmap_milestones")
       .update({
         dependency_ids: (d.dependency_ids as string[]).filter((x) => x !== id),
       })
@@ -121,7 +121,7 @@ export async function addDependency(formData: FormData) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .select("dependency_ids")
     .eq("id", id)
     .maybeSingle();
@@ -131,7 +131,7 @@ export async function addDependency(formData: FormData) {
   if (current.includes(dependsOn)) return;
 
   await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .update({ dependency_ids: [...current, dependsOn] })
     .eq("id", id);
 
@@ -146,14 +146,14 @@ export async function removeDependency(formData: FormData) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .select("dependency_ids")
     .eq("id", id)
     .maybeSingle();
   if (!data) return;
 
   await supabase
-    .from("bmc_roadmap_milestones")
+    .from("roadmap_milestones")
     .update({
       dependency_ids: ((data.dependency_ids ?? []) as string[]).filter(
         (x) => x !== dependsOn,

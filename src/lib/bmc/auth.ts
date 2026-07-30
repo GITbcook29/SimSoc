@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import type { Profile } from "./types";
 
 /**
  * Current user's BMC profile, or null when signed out. The profile row is
- * created by the `bmc_on_auth_user_created` trigger, so a signed-in user
+ * created by the `on_auth_user_created` trigger, so a signed-in user
  * without one means the migration hasn't been applied yet.
  */
 export async function getProfile(): Promise<Profile | null> {
@@ -15,7 +15,7 @@ export async function getProfile(): Promise<Profile | null> {
   if (!user) return null;
 
   const { data } = await supabase
-    .from("bmc_profiles")
+    .from("profiles")
     .select("id, email, full_name, org, role, business_name, avatar_url")
     .eq("id", user.id)
     .maybeSingle();

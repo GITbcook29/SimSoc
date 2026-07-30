@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireProfile } from "@/lib/bmc/auth";
 import {
   PROGRAM_NAME,
@@ -39,13 +39,13 @@ export default async function DashboardPage() {
 
   const [{ data: taskData }, { data: sessionData }] = await Promise.all([
     supabase
-      .from("bmc_participant_tasks")
+      .from("participant_tasks")
       .select("id, participant_id, source_session_id, text, due_date, done")
       .eq("participant_id", me.id)
       .order("done")
       .order("due_date", { nullsFirst: false }),
     supabase
-      .from("bmc_sessions")
+      .from("sessions")
       .select(
         "id, session_number, session_date, title, arena_block, exit_momentum_block, breakout_takeaway, mentor_focus, recording_url, location, prep_checklist, status, published",
       )

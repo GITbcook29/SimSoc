@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { MEETING_TOTAL_MINUTES } from "@/lib/bmc/config";
 import type { Meeting } from "@/lib/bmc/types";
@@ -23,12 +23,12 @@ export default async function MeetingIndexPage() {
   const [{ data: meetingData }, { data: openTodos }, { data: openIssues }] =
     await Promise.all([
       supabase
-        .from("bmc_meetings")
+        .from("meetings")
         .select("id, meeting_date, title, status, started_at, attendees, rating, cascading")
         .order("meeting_date", { ascending: false })
         .order("created_at", { ascending: false }),
-      supabase.from("bmc_todos").select("id").eq("done", false),
-      supabase.from("bmc_issues").select("id").eq("resolved", false),
+      supabase.from("todos").select("id").eq("done", false),
+      supabase.from("issues").select("id").eq("resolved", false),
     ]);
 
   const meetings = (meetingData ?? []) as Meeting[];

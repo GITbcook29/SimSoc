@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireProfile } from "@/lib/bmc/auth";
 import {
   ACCEPT_ATTRIBUTE,
@@ -25,7 +25,7 @@ export default async function FilesPage({
   const supabase = await createClient();
 
   const { data } = await supabase
-    .from("bmc_files")
+    .from("files")
     .select("id, owner_id, storage_path, filename, mime, size, scope, created_at")
     .eq("owner_id", me.id)
     .order("created_at", { ascending: false });

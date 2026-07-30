@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { getProfile, isTeam } from "@/lib/bmc/auth";
 import { leadsToCSV } from "@/lib/bmc/leads";
 import type { Lead } from "@/lib/bmc/types";
@@ -17,7 +17,7 @@ export async function GET() {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_leads")
+    .from("leads")
     .select("*")
     .order("stage")
     .order("name");

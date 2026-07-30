@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { BILLING_ENTITY_LABEL, ORGS, ORG_COLOR, ORG_LABEL } from "@/lib/bmc/config";
 import { computeScenario, money } from "@/lib/bmc/pricing";
@@ -268,7 +268,7 @@ export default async function PricingPage() {
   const supabase = await createClient();
 
   const { data } = await supabase
-    .from("bmc_pricing_scenarios")
+    .from("pricing_scenarios")
     .select("*")
     .order("sort_order");
 

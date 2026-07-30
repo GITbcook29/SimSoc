@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireProfile } from "@/lib/bmc/auth";
 import type { ChatMessage } from "@/lib/bmc/types";
 import { Card, Eyebrow, PageHeader } from "@/components/bmc/ui";
@@ -9,7 +9,7 @@ export default async function AssistantPage() {
   const supabase = await createClient();
 
   const { data } = await supabase
-    .from("bmc_chat_messages")
+    .from("chat_messages")
     .select("id, participant_id, role, content, created_at")
     .eq("participant_id", me.id)
     .order("created_at", { ascending: true });

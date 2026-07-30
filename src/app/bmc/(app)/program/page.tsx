@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireProfile } from "@/lib/bmc/auth";
 import {
   LOCKUP,
@@ -31,14 +31,14 @@ export default async function ProgramPage() {
 
   const [{ data: sessionData }, { data: rosterData }] = await Promise.all([
     supabase
-      .from("bmc_sessions")
+      .from("sessions")
       .select(
         "id, session_number, session_date, title, arena_block, exit_momentum_block, breakout_takeaway, mentor_focus, recording_url, location, prep_checklist, status, published",
       )
       .eq("published", true)
       .order("session_number"),
     supabase
-      .from("bmc_team_roster")
+      .from("team_roster")
       .select("id, full_name, org, role_title, email, profile_id, active, sort_order")
       .eq("active", true)
       .order("sort_order"),

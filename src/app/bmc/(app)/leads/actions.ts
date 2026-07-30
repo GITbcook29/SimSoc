@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient as createServerClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/bmc/supabase/server";
 import { requireTeam } from "@/lib/bmc/auth";
 import { ORGS, PIPELINE_STAGES, type Org, type PipelineStage } from "@/lib/bmc/config";
 import { parseLeadsCSV, suggestFitScore } from "@/lib/bmc/leads";
@@ -35,19 +35,19 @@ export async function setLeadField(id: string, column: string, value: string) {
 
   if ((TEXT_COLUMNS as readonly string[]).includes(column)) {
     await supabase
-      .from("bmc_leads")
+      .from("leads")
       .update({ [column]: trimmed || null })
       .eq("id", id);
   } else if ((NUMBER_COLUMNS as readonly string[]).includes(column)) {
     const n = trimmed === "" ? null : Number(trimmed);
     if (n !== null && Number.isNaN(n)) return;
     await supabase
-      .from("bmc_leads")
+      .from("leads")
       .update({ [column]: n })
       .eq("id", id);
   } else if ((DATE_COLUMNS as readonly string[]).includes(column)) {
     await supabase
-      .from("bmc_leads")
+      .from("leads")
       .update({ [column]: trimmed || null })
       .eq("id", id);
   } else {
@@ -65,7 +65,7 @@ export async function setLeadStage(id: string, value: string) {
 
   const supabase = await createClient();
   await supabase
-    .from("bmc_leads")
+    .from("leads")
     .update({ stage: value as PipelineStage })
     .eq("id", id);
 
@@ -76,7 +76,7 @@ export async function setLeadOwner(id: string, value: string) {
   await requireTeam();
   const supabase = await createClient();
   await supabase
-    .from("bmc_leads")
+    .from("leads")
     .update({ owner_profile_id: value || null })
     .eq("id", id);
   revalidatePath(PATH);
@@ -90,7 +90,7 @@ export async function setLeadOwnerOrg(id: string, value: string) {
   }
 
   const supabase = await createClient();
-  await supabase.from("bmc_leads").update({ owner_org: org }).eq("id", id);
+  await supabase.from("leads").update({ owner_org: org }).eq("id", id);
   revalidatePath(PATH);
 }
 
@@ -100,7 +100,7 @@ export async function addLead(formData: FormData) {
   if (!name) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_leads").insert({
+  await supabase.from("leads").insert({
     name,
     business: String(formData.get("business") ?? "").trim() || null,
   });
@@ -114,7 +114,7 @@ export async function deleteLead(formData: FormData) {
   if (!id) return;
 
   const supabase = await createClient();
-  await supabase.from("bmc_leads").delete().eq("id", id);
+  await supabase.from("leads").delete().eq("id", id);
   revalidatePath(PATH);
 }
 
@@ -126,14 +126,14 @@ export async function rescoreLead(formData: FormData) {
 
   const supabase = await createClient();
   const { data } = await supabase
-    .from("bmc_leads")
+    .from("leads")
     .select("years_in_business, employees, revenue_band, industry, referred_by")
     .eq("id", id)
     .maybeSingle();
   if (!data) return;
 
   await supabase
-    .from("bmc_leads")
+    .from("leads")
     .update({ fit_score: suggestFitScore(data as Partial<Lead>) })
     .eq("id", id);
 
@@ -152,7 +152,7 @@ export async function importLeadsCSV(formData: FormData) {
   if (error) backWith({ error });
 
   const supabase = await createClient();
-  const { error: insertError } = await supabase.from("bmc_leads").insert(rows);
+  const { error: insertError } = await supabase.from("leads").insert(rows);
   if (insertError) backWith({ error: insertError.message });
 
   revalidatePath(PATH);
@@ -171,18 +171,18 @@ export async function convertLeadToParticipant(formData: FormData) {
   if (!id) return;
   if (!email) backWith({ error: "An email address is required to invite a participant." });
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.BMC_SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.NEXT_PUBLIC_BMC_SUPABASE_URL;
   if (!serviceKey || !url) {
     backWith({
       error:
-        "SUPABASE_SERVICE_ROLE_KEY is not configured, so invites can't be sent from here. Invite the participant from the Supabase dashboard and link the record manually.",
+        "BMC_SUPABASE_SERVICE_ROLE_KEY is not configured, so invites can't be sent from here. Invite the participant from the Supabase dashboard and link the record manually.",
     });
   }
 
   const supabase = await createClient();
   const { data: lead } = await supabase
-    .from("bmc_leads")
+    .from("leads")
     .select("id, name, business")
     .eq("id", id)
     .maybeSingle();
@@ -196,7 +196,7 @@ export async function convertLeadToParticipant(formData: FormData) {
     email,
     {
       data: { full_name: lead.name, business_name: lead.business },
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/auth/confirm?next=/bmc`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/bmc/auth/confirm?next=/bmc`,
     },
   );
 
@@ -208,7 +208,7 @@ export async function convertLeadToParticipant(formData: FormData) {
 
   // The signup trigger creates the profile; fill in the details we already know.
   await admin
-    .from("bmc_profiles")
+    .from("profiles")
     .update({
       full_name: lead.name,
       business_name: lead.business,
@@ -218,7 +218,7 @@ export async function convertLeadToParticipant(formData: FormData) {
     .eq("id", participantId);
 
   await supabase
-    .from("bmc_leads")
+    .from("leads")
     .update({ stage: "committed", converted_participant_id: participantId })
     .eq("id", id);
 

@@ -1,5 +1,5 @@
 -- ===========================================================================
--- BMC seed data
+-- BMC seed data — run against the BMC Supabase project, after 0001.
 --
 -- Idempotent: safe to re-run. Loads the build team roster, the three phase
 -- bands with the kickoff-call milestones, the ten responsibility-matrix
@@ -14,7 +14,7 @@
 -- Build team
 -- ---------------------------------------------------------------------------
 
-insert into bmc_team_roster (full_name, org, role_title, sort_order) values
+insert into team_roster (full_name, org, role_title, sort_order) values
   ('Bradley Cook',   'palette',       'Program lead / Palette',            1),
   ('Lauren Navarre', 'arena',         'Curriculum lead / Arena',           2),
   ('Jared Miguez',   'arena',         'Curriculum / Arena',                3),
@@ -27,7 +27,7 @@ on conflict do nothing;
 -- Roadmap — phase bands with week-level milestones
 -- ---------------------------------------------------------------------------
 
-insert into bmc_roadmap_milestones (phase, title, org, sort_order)
+insert into roadmap_milestones (phase, title, org, sort_order)
 select v.phase, v.title, v.org, v.sort_order
 from (values
   -- Q3 2026 — Plan & Build
@@ -56,7 +56,7 @@ from (values
   ('q1_2027', 'Cohort debrief and next-cohort decision',             'shared',        70)
 ) as v(phase, title, org, sort_order)
 where not exists (
-  select 1 from bmc_roadmap_milestones m
+  select 1 from roadmap_milestones m
   where m.phase = v.phase and m.title = v.title
 );
 
@@ -68,7 +68,7 @@ where not exists (
 -- flagged as a gap.
 -- ---------------------------------------------------------------------------
 
-insert into bmc_responsibility_matrix (workstream, org, owner_name, raci, sort_order)
+insert into responsibility_matrix (workstream, org, owner_name, raci, sort_order)
 values
   ('Curriculum & Content',   'arena',         'Lauren Navarre', 'A', 10),
   ('Coaching Component',     'exit_momentum', 'Craig Sweeney',  'A', 20),
@@ -83,7 +83,7 @@ values
 on conflict (workstream, org) do nothing;
 
 -- Arena and Exit Momentum are Consulted on the shared go-to-market workstreams.
-insert into bmc_responsibility_matrix (workstream, org, raci, sort_order)
+insert into responsibility_matrix (workstream, org, raci, sort_order)
 values
   ('Sales & Outreach',       'arena',         'R', 61),
   ('Sales & Outreach',       'exit_momentum', 'R', 62),
@@ -100,7 +100,7 @@ on conflict (workstream, org) do nothing;
 -- shows them as placeholders until an admin fills them in.
 -- ---------------------------------------------------------------------------
 
-insert into bmc_sessions (session_number, prep_checklist)
+insert into sessions (session_number, prep_checklist)
 select
   n,
   jsonb_build_array(
@@ -118,7 +118,7 @@ on conflict (session_number) do nothing;
 -- price_per_participant is left null: it is an open item, not a default.
 -- ---------------------------------------------------------------------------
 
-insert into bmc_pricing_scenarios (name, cohort_size, cost_items, org_split, notes, sort_order)
+insert into pricing_scenarios (name, cohort_size, cost_items, org_split, notes, sort_order)
 select v.name, v.cohort_size, v.cost_items::jsonb, v.org_split::jsonb, v.notes, v.sort_order
 from (values
   (
@@ -142,4 +142,4 @@ from (values
     'Better unit economics; needs a deeper mentor pool and a bigger room.', 20
   )
 ) as v(name, cohort_size, cost_items, org_split, notes, sort_order)
-where not exists (select 1 from bmc_pricing_scenarios p where p.name = v.name);
+where not exists (select 1 from pricing_scenarios p where p.name = v.name);
