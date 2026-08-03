@@ -138,6 +138,16 @@ export type Round = {
   closed: boolean;
 };
 
+/** A per-game participant rule. Reference text only — never read by the engine. */
+export type Rule = {
+  id: string;
+  game_id: string;
+  text: string;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type GameConfig = {
   numSessions: number;
   lockLevel: boolean;

@@ -37,6 +37,7 @@ import {
   type Region,
   type Round,
   type RoundInputs,
+  type Rule,
 } from "@/lib/types";
 
 type Toast = { id: number; text: string; kind: "success" | "error" };
@@ -48,6 +49,7 @@ type GameContextValue = {
   heads: GameHeads;
   rounds: Record<number, Round>;
   currentRound: number;
+  rules: Rule[];
   toasts: Toast[];
 
   // derived
@@ -75,6 +77,9 @@ type GameContextValue = {
   tally: (key: "rioters" | "guardPosts" | "arrests" | "goalsPos" | "goalsNeg", d: number) => Promise<void>;
   closeSession: (opts?: { force?: boolean }) => Promise<{ ok: boolean; needsConfirm?: number; collapsed?: boolean }>;
   reopenRound: (roundNo: number) => Promise<void>;
+  addRule: (text: string) => Promise<void>;
+  updateRule: (id: string, text: string) => Promise<void>;
+  deleteRule: (id: string) => Promise<void>;
   toast: (text: string) => void;
 };
 
@@ -101,6 +106,7 @@ export function GameProvider({
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [heads, setHeads] = useState<GameHeads>({});
   const [rounds, setRounds] = useState<Record<number, Round>>({});
+  const [rules, setRules] = useState<Rule[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   // Mirrors `rounds` for synchronous reads. Reading state back out of a `setState`
@@ -135,6 +141,14 @@ export function GameProvider({
   // buttons land in order.
   const participantWriteQueueRef = useRef<Map<string, Promise<unknown>>>(new Map());
 
+  // Same rationale as roundsRef: addRule derives the new row's sort_order from the
+  // current list, and two quick "Add rule" presses would otherwise both read the
+  // pre-render value and land on the same sort_order.
+  const rulesRef = useRef(rules);
+  useEffect(() => {
+    rulesRef.current = rules;
+  }, [rules]);
+
   const toast = useCallback((text: string) => {
     const id = Date.now() + Math.random();
     const kind: Toast["kind"] = text.startsWith("Error") ? "error" : "success";
@@ -145,16 +159,23 @@ export function GameProvider({
   const fetchAll = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoading(true);
-      const [{ data: g }, { data: parts }, { data: headRows }, { data: roundRows }] =
+      const [{ data: g }, { data: parts }, { data: headRows }, { data: roundRows }, { data: ruleRows }] =
         await Promise.all([
           supabase.from("games").select("*").eq("id", gameId).single(),
           supabase.from("participants").select("*").eq("game_id", gameId).order("name"),
           supabase.from("game_heads").select("*").eq("game_id", gameId),
           supabase.from("rounds").select("*").eq("game_id", gameId).order("round_no"),
+          supabase
+            .from("rules")
+            .select("*")
+            .eq("game_id", gameId)
+            .order("sort_order")
+            .order("created_at"),
         ]);
 
       if (g) setGame(g as Game);
       setParticipants((parts ?? []) as Participant[]);
+      setRules((ruleRows ?? []) as Rule[]);
 
       const headMap: GameHeads = {};
       for (const h of headRows ?? []) headMap[h.role as HeadRole] = h.participant_id;
@@ -225,6 +246,11 @@ export function GameProvider({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rounds", filter: `game_id=eq.${gameId}` },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "rules", filter: `game_id=eq.${gameId}` },
         scheduleRefresh
       )
       .subscribe();
@@ -611,6 +637,61 @@ export function GameProvider({
     [gameId, rounds, supabase]
   );
 
+  // ---- participant rules ----
+  // Reference text only: nothing below feeds computeRound or the close/reopen flow.
+  // Each write is optimistic; a failure re-syncs from the DB so the list can't keep
+  // showing an edit that never landed.
+  const addRule = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const nextOrder = rulesRef.current.reduce((max, r) => Math.max(max, r.sort_order), -1) + 1;
+      const row: Rule = { id: crypto.randomUUID(), game_id: gameId, text: trimmed, sort_order: nextOrder };
+
+      rulesRef.current = [...rulesRef.current, row];
+      setRules(rulesRef.current);
+
+      const { error } = await supabase
+        .from("rules")
+        .insert({ id: row.id, game_id: gameId, text: trimmed, sort_order: nextOrder });
+      if (error) {
+        toast("Error adding rule: " + error.message);
+        await fetchAll({ silent: true });
+      }
+    },
+    [fetchAll, gameId, supabase, toast]
+  );
+
+  const updateRule = useCallback(
+    async (id: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      rulesRef.current = rulesRef.current.map((r) => (r.id === id ? { ...r, text: trimmed } : r));
+      setRules(rulesRef.current);
+
+      const { error } = await supabase.from("rules").update({ text: trimmed }).eq("id", id);
+      if (error) {
+        toast("Error saving rule: " + error.message);
+        await fetchAll({ silent: true });
+      }
+    },
+    [fetchAll, supabase, toast]
+  );
+
+  const deleteRule = useCallback(
+    async (id: string) => {
+      rulesRef.current = rulesRef.current.filter((r) => r.id !== id);
+      setRules(rulesRef.current);
+
+      const { error } = await supabase.from("rules").delete().eq("id", id);
+      if (error) {
+        toast("Error deleting rule: " + error.message);
+        await fetchAll({ silent: true });
+      }
+    },
+    [fetchAll, supabase, toast]
+  );
+
   const value: GameContextValue = {
     loading,
     game,
@@ -618,6 +699,7 @@ export function GameProvider({
     heads,
     rounds,
     currentRound,
+    rules,
     toasts,
     level,
     pop,
@@ -639,6 +721,9 @@ export function GameProvider({
     tally,
     closeSession,
     reopenRound,
+    addRule,
+    updateRule,
+    deleteRule,
     toast,
   };
 

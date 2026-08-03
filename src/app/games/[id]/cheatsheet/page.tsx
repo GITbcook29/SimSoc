@@ -1,3 +1,5 @@
+import { ParticipantRules } from "./ParticipantRules";
+
 export default function CheatSheetPage() {
   return (
     <div className="grid md:grid-cols-2 gap-4 text-xs">
@@ -87,6 +89,10 @@ export default function CheatSheetPage() {
           <li>Close Session → distribute next-session payments from Results tab</li>
           <li>Print / read MasMed report to the society</li>
         </ol>
+      </div>
+
+      <div className="md:col-span-2">
+        <ParticipantRules />
       </div>
     </div>
   );

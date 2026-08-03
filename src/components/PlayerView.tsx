@@ -19,12 +19,16 @@ export type PlayerData = {
   participants: Participant[];
   closed_rounds: { round_no: number; results: RoundResults }[];
   reports: { round_no: number; inputs: RoundInputs; results: RoundResults }[];
+  // Read-only house rules, already ordered by the RPC. Optional so a client running
+  // against a database where migration 0006 hasn't been applied still renders.
+  rules?: { id: string; text: string }[];
 };
 
-type Pill = "society" | "masmed" | Region;
+type Pill = "society" | "masmed" | "rules" | Region;
 
 const SOCIETY_COLOR = "#4de1c1";
 const MASMED_COLOR = "#7c6cff";
+const RULES_COLOR = "#f2b544";
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   P: { label: "Present", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/40" },
@@ -50,6 +54,7 @@ export function PlayerView({ data }: { data: PlayerData }) {
   const pills: { key: Pill; label: string; color: string }[] = [
     { key: "society", label: "Society", color: SOCIETY_COLOR },
     { key: "masmed", label: "MASMED", color: MASMED_COLOR },
+    { key: "rules", label: "Rules", color: RULES_COLOR },
     ...REGIONS.map((r) => ({ key: r as Pill, label: r, color: REGION_HEX[r] })),
   ];
 
@@ -90,6 +95,7 @@ export function PlayerView({ data }: { data: PlayerData }) {
       <main className="flex-1 px-5 md:px-10 py-6 md:py-10">
         {pill === "society" && <PublicDisplayBoard participants={data.participants} rounds={rounds} />}
         {pill === "masmed" && <MasmedPane data={data} />}
+        {pill === "rules" && <RulesPane data={data} />}
         {(REGIONS as readonly string[]).includes(pill) && <TeamPane region={pill as Region} data={data} />}
       </main>
     </div>
@@ -118,6 +124,41 @@ function MasmedPane({ data }: { data: PlayerData }) {
           <MasmedReport roundNo={rep.round_no} inputs={rep.inputs} results={rep.results} headName={headName} />
         </div>
       ))}
+    </div>
+  );
+}
+
+// Read-only for players — edits happen on the coordinator's cheat sheet. The page
+// re-polls player_status on its own interval, so changes land here without a reload.
+function RulesPane({ data }: { data: PlayerData }) {
+  const rules = data.rules ?? [];
+
+  if (!rules.length) {
+    return (
+      <div className="max-w-3xl mx-auto text-center text-slate-400 text-lg md:text-2xl py-16">
+        No participant rules posted yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <h2 className="text-2xl md:text-3xl font-extrabold mb-4" style={{ color: RULES_COLOR }}>
+        Participant Rules
+      </h2>
+      <ol className="rounded-xl border border-slate-800 divide-y divide-slate-800 overflow-hidden">
+        {rules.map((rule, i) => (
+          <li key={rule.id} className="flex gap-3 md:gap-4 px-4 py-3 md:py-4 bg-slate-900/40">
+            <span
+              className="shrink-0 font-mono font-bold tabular-nums text-base md:text-xl"
+              style={{ color: RULES_COLOR }}
+            >
+              {i + 1}
+            </span>
+            <span className="text-base md:text-xl leading-snug whitespace-pre-wrap break-words">{rule.text}</span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
