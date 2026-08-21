@@ -30,6 +30,8 @@ import {
 import {
   HEADROLES,
   REGIONS,
+  type DisasterInputs,
+  type ElectionInputs,
   type Game,
   type GameHeads,
   type HeadRole,
@@ -77,6 +79,8 @@ type GameContextValue = {
   setDisInput: (key: string, value: string | number | Partial<Record<Region, number>>) => Promise<void>;
   setElecInput: (key: string, value: string | number | boolean | Partial<Record<Region, number>>) => Promise<void>;
   setCirculationInput: (patch: Partial<RoundInputs["circulation"]>) => Promise<void>;
+  applyDisPreset: (patch: Partial<DisasterInputs>) => Promise<void>;
+  applyElecPreset: (patch: Partial<ElectionInputs>) => Promise<void>;
   tally: (key: "rioters" | "guardPosts" | "arrests" | "goalsPos" | "goalsNeg", d: number) => Promise<void>;
   closeSession: () => Promise<{ ok: boolean; collapsed?: boolean }>;
   reopenRound: (roundNo: number) => Promise<void>;
@@ -600,6 +604,31 @@ export function GameProvider({
     [currentRound, updateRoundInputs]
   );
 
+  // Presets set up to nine fields at once. Writing them one key at a time raced
+  // with Realtime: the debounced silent fetchAll resets roundsRef to database
+  // state, and if it landed mid-loop the next key merged onto a regressed base,
+  // silently dropping fields already applied — observed as the FEMA levy coming
+  // back 0 after applying the hurricane preset, correct only on a second click.
+  // Merging the whole preset into ONE write closes the window by construction
+  // and costs a single round-trip instead of nine.
+  const applyDisPreset = useCallback(
+    async (patch: Partial<DisasterInputs>) => {
+      await updateRoundInputs(currentRound, (inputs) => ({
+        dis: { ...defaultDisaster(), ...inputs.dis, ...patch },
+      }));
+    },
+    [currentRound, updateRoundInputs]
+  );
+
+  const applyElecPreset = useCallback(
+    async (patch: Partial<ElectionInputs>) => {
+      await updateRoundInputs(currentRound, (inputs) => ({
+        elec: { ...defaultElection(), ...inputs.elec, ...patch },
+      }));
+    },
+    [currentRound, updateRoundInputs]
+  );
+
   // Shallow-merge into the round's `circulation` object — used by the
   // Treasury & Circulation panel for region cash, group cash overrides,
   // bank fee counts, and the removal/injection repeaters.
@@ -794,6 +823,8 @@ export function GameProvider({
     setDisInput,
     setElecInput,
     setCirculationInput,
+    applyDisPreset,
+    applyElecPreset,
     tally,
     closeSession,
     reopenRound,

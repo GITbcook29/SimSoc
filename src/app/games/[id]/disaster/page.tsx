@@ -73,7 +73,7 @@ function disEffectText(D: DisasterInputs) {
 }
 
 export default function DisasterPage() {
-  const { loading, currentRound, rounds, setDisInput } = useGame();
+  const { loading, currentRound, rounds, setDisInput, applyDisPreset } = useGame();
   if (loading) return <CardSkeleton rows={7} />;
   const round = rounds[currentRound];
   if (!round) return null;
@@ -95,10 +95,7 @@ export default function DisasterPage() {
   const levyRows = disasterLevyRows(D);
 
   async function applyPreset(name: string) {
-    const preset = DIS_PRESETS[name];
-    for (const [k, v] of Object.entries(preset)) {
-      await setDisInput(k, v as string | number);
-    }
+    await applyDisPreset(DIS_PRESETS[name]);
   }
 
   return (

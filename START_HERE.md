@@ -30,6 +30,9 @@ Supabase + Vercel. Owner/user (**Bcook**) is non-technical for this build.
 - **Next 16 (App Router, Turbopack) + React 19 + Tailwind v4 + TypeScript.** Note `AGENTS.md`: this is a modified Next 16 — mirror existing patterns in the repo.
 
 ## Recent commits (on `main`, deployed)
+- `<preset-fix>` — Presets write atomically (fixes the disaster/election levy-drop race)
+- `<docs>` — Track the handoff docs in git
+- `043f812` — Session-1 auto-seeded simbucks; roster defaults to Present
 - `b89d685` — Money in circulation, levies assessed-vs-collected, collapse-warning rework
 - `5274eee` — Five data-integrity fixes (attendance, BASIN passage model, head/role sync)
 - `f093002` — Remove redundant "Head of" roster column
@@ -37,9 +40,8 @@ Supabase + Vercel. Owner/user (**Bcook**) is non-technical for this build.
 - `45dfa5a` — Player status link + game delete/rename + MASMED release
 - `7024148` — "Mission Control" dark theme (visual redesign; reviewed & accepted)
 
-> ⚠️ **Uncommitted at time of writing:** two coordinator-requested corrections are in
-> the working tree but **not committed** — Session-1 auto-seeded simbucks, and the
-> roster defaulting to Present. See "Uncommitted work" below before you start.
+Working tree was clean at the end of the 2026-08-21 session — everything above is committed,
+pushed and deployed.
 
 ---
 
@@ -78,6 +80,16 @@ Supabase + Vercel. Owner/user (**Bcook**) is non-technical for this build.
 - **Floor disclosure** — `computeRound()` now also returns `raw` (pre-floor) and `absorbed`
   per indicator, shown under each gauge, summarised for the round, and trended in a new
   History column. Previously the floor hid large damage silently.
+
+### Preset write race (fixed)
+`applyPreset()` on Disaster/Election used to write a preset's ~9 fields one key at a time.
+Realtime's debounced silent `fetchAll` could land mid-loop, reset `roundsRef` to database state,
+and the next key would merge onto a regressed base — silently dropping fields already applied
+(observed: the FEMA levy reading 0 after a hurricane preset, correct only on a second click).
+Presets now go through `applyDisPreset` / `applyElecPreset` in `game-context.tsx`, which merge
+the whole preset into **one** `updateRoundInputs` call. Verified: a single click persists all
+nine disaster fields including `levy: 40`, and the SOP-victory preset likewise.
+**If you add another multi-field bulk update, do it as one merged write — not a loop of setters.**
 
 ---
 
@@ -144,9 +156,8 @@ Supabase + Vercel. Owner/user (**Bcook**) is non-technical for this build.
 - **Multi-session dev-server gotcha (cost us real time):** the user runs more than one Claude session in this folder, so another session's `next dev` may own port 5174 and serve **stale bundles that don't match your on-disk edits** (a browser hard-refresh won't fix it, and Next 16 refuses to start a second `next dev` for the same dir). Fix: confirm files are correct on disk, then `lsof -ti tcp:5174 | xargs kill` and relaunch `npx next dev -p 5174` for a clean recompile.
 - Push only when the user asks; `main` auto-deploys to prod. Commits authored as Bradley Cook (local git identity).
 
-## Uncommitted work (as of 2026-08-21)
-Two coordinator-requested corrections are **verified but not committed** — decide whether to
-commit or discard before building on top of them:
+## Session-1 money & the Present default (`043f812`)
+Two coordinator-requested corrections, shipped:
 1. **Session 1 auto-seeds simbucks.** Region and group treasury boxes open pre-filled with the
    manual's level-appropriate figures as editable values (level 1: Green $80 / Yellow $80 /
    Blue $60 / **Red $0**; total **$220**). Regions are now the **authoritative** total and group
@@ -160,19 +171,21 @@ commit or discard before building on top of them:
    the player view show a real status. **`src/components/ConfirmDialog.tsx` is now unreferenced** —
    kept because the three remaining `window.confirm` sites could use it.
 
-## Open design question (raised, deliberately not built)
-Whether levies should be **% of holdings/income rather than flat**, so Red isn't wiped out.
-Recommendation given: **don't** — the assessed/collected split already prevents a wipeout
-(nothing is auto-deducted), and a regressive flat levy is the mechanism that creates the
-political pressure the simulation exists to produce. If revisited, prefer an explicit,
-announceable **hardship floor** over a silent formula, and note that a %-of-holdings levy would
-make region cash counting **mandatory every session**. User's response: "ignore" — so it is parked.
+## Settled design decisions (don't reopen without a reason)
+- **Levies stay flat — percentage-based levies were considered and rejected (2026-08-21).**
+  The worry was that a flat levy wipes out a region like Red that may hold $0. It doesn't:
+  since the assessed/collected split shipped, nothing is auto-deducted — you enter what a region
+  actually paid and the rest is recorded as a shortfall, so Red can never go negative.
+  What a percentage would really change is the *fairness of the assessment*, and a regressive
+  flat levy is precisely the mechanism that creates the political pressure the simulation exists
+  to produce. Making it proportional would resolve that tension silently, with nobody deciding
+  anything. If it is ever revisited: prefer an explicit, announceable **hardship floor**
+  ("Assessed $26 · Relief −$18 · Due $8") over a hidden formula, and note that a
+  %-of-holdings levy would make region cash counting **mandatory every session**, while a
+  %-of-income levy is auto-computable but hands Red a permanent $0.
 
 ## Known / open (non-blocking)
-- **Disaster/election preset race (pre-existing, NOT fixed).** `applyPreset()` in
-  `disaster/page.tsx` (and `election/page.tsx`) fires a sequential `await setDisInput(...)` loop;
-  the first click dropped the `levy` field and it only landed on retry. Same stale-closure class
-  as the bugs fixed in `3e18bb4`/`5274eee`. Worth folding into the ref+queue pattern.
+_Nothing outstanding as of 2026-08-21 — the preset race below was fixed._
 - **Minor mobile cosmetic:** on the player Society pane, the region-health cards ("Red 100") can have the region name and the big number nearly touching on very narrow phones (`PublicDisplayBoard.tsx`). Not fixed.
 - The seeded game **"Leadership St Tammany 2026"** has no group heads/roles assigned, so its team pills show names + status but no role labels — that's the data, not a bug (head-badge rendering was verified with mock data).
 - Two accepted findings from the dark-theme review (not fixed, deemed fine): GameNav relabels the readout (`Pop→POP`, `Level→LVL`, adds `LIVE`); and the global base `border-color` reaches the MasMed white card's bare border. Neither affects logic or print.

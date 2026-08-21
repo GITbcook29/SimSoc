@@ -68,7 +68,7 @@ function elecEffectText(E: ElectionInputs) {
 }
 
 export default function ElectionPage() {
-  const { loading, currentRound, rounds, heads, participants, setElecInput } = useGame();
+  const { loading, currentRound, rounds, heads, participants, setElecInput, applyElecPreset } = useGame();
   if (loading) return <CardSkeleton rows={7} />;
   const round = rounds[currentRound];
   if (!round) return null;
@@ -98,10 +98,7 @@ export default function ElectionPage() {
   const T = electionTreasury(E, regionLiving);
 
   async function applyPreset(name: string) {
-    const preset = ELEC_PRESETS[name];
-    for (const [k, v] of Object.entries(preset)) {
-      await setElecInput(k, v as string | number | boolean);
-    }
+    await applyElecPreset(ELEC_PRESETS[name]);
   }
 
   return (
