@@ -72,6 +72,7 @@ export default function ElectionPage() {
   if (loading) return <CardSkeleton rows={7} />;
   const round = rounds[currentRound];
   if (!round) return null;
+  const rawE = (round.inputs.elec as Partial<ElectionInputs> | undefined) ?? {};
   const E: ElectionInputs = {
     announce: false,
     winner: "",
@@ -82,7 +83,9 @@ export default function ElectionPage() {
     dSC: 0,
     dPC: 0,
     notes: "",
-    ...(round.inputs.elec as Partial<ElectionInputs> | undefined),
+    ...rawE,
+    levyCollected: { ...(rawE.levyCollected || {}) },
+    inKind: { ...(rawE.inKind || {}) },
   };
 
   const headOf = (role: string) => {
@@ -177,13 +180,19 @@ export default function ElectionPage() {
           />
         </div>
 
-        <h3 className="text-xs text-neutral-500 mt-2 mb-1">Collection preview (living members)</h3>
+        <h3 className="text-xs text-neutral-500 mt-2 mb-1">
+          Assessed vs collected — Red has no group heads and may not be able to pay; only collected $ is
+          redistributed
+        </h3>
         <table className="w-full text-xs border-collapse mb-2">
           <thead>
             <tr className="text-left text-neutral-400">
               <th>Region</th>
               <th>Members</th>
-              <th>Levy</th>
+              <th>Assessed</th>
+              <th>Collected</th>
+              <th>Shortfall</th>
+              <th>In-kind (cards)</th>
             </tr>
           </thead>
           <tbody>
@@ -191,16 +200,59 @@ export default function ElectionPage() {
               <tr key={r.region} className="border-t">
                 <td>{r.region}</td>
                 <td>{r.members}</td>
-                <td>${fmt(r.amount)}</td>
+                <td>${fmt(r.assessed)}</td>
+                <td>
+                  <input
+                    type="number"
+                    defaultValue={r.collected}
+                    key={"ec" + r.region + r.collected}
+                    onBlur={(e) =>
+                      setElecInput("levyCollected", {
+                        ...E.levyCollected,
+                        [r.region]: e.target.value === "" ? 0 : +e.target.value,
+                      })
+                    }
+                    className="w-16 border rounded px-1 py-0.5 text-right"
+                  />
+                </td>
+                <td className={r.shortfall > 0 ? "text-amber-500 font-semibold" : ""}>
+                  {r.shortfall > 0 ? `$${fmt(r.shortfall)}` : "—"}
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    defaultValue={r.inKind}
+                    key={"ek" + r.region + r.inKind}
+                    onBlur={(e) =>
+                      setElecInput("inKind", {
+                        ...E.inKind,
+                        [r.region]: e.target.value === "" ? 0 : +e.target.value,
+                      })
+                    }
+                    className="w-14 border rounded px-1 py-0.5 text-right"
+                  />
+                </td>
               </tr>
             ))}
             <tr className="border-t font-bold">
-              <td>Treasury total</td>
+              <td>Treasury (collected)</td>
               <td></td>
+              <td>${fmt(T.totalAssessed)}</td>
               <td>${fmt(T.total)}</td>
+              <td className={T.totalShortfall > 0 ? "text-amber-500" : ""}>
+                {T.totalShortfall > 0 ? `$${fmt(T.totalShortfall)}` : "—"}
+              </td>
+              <td></td>
             </tr>
           </tbody>
         </table>
+        {T.totalShortfall > 0 && (
+          <p className="text-xs bg-amber-500/10 border border-amber-500/40 text-amber-100 rounded px-3 py-2 mb-2">
+            ⚠ ${fmt(T.totalShortfall)}{" "}
+            of the levy went uncollected — the winning heads receive less, per the Coordinator&apos;s Manual. This
+            is not auto-collected.
+          </p>
+        )}
         {T.recips.length > 0 && (
           <table className="w-full text-xs border-collapse mb-2">
             <thead>

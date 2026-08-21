@@ -1,7 +1,8 @@
 "use client";
 
 import { useGame } from "../game-context";
-import { fmt } from "@/lib/derive";
+import { collapseTier, fmt } from "@/lib/derive";
+import { computeCirculation, roundFlow } from "@/lib/simsoc-engine.js";
 import type { Indicators } from "@/lib/types";
 import { SEVERITY_BANNER, SEVERITY_TILE, SEVERITY_TEXT, TYPE, type Severity } from "@/lib/tokens";
 import { EmptyState } from "@/components/EmptyState";
@@ -58,6 +59,12 @@ export default function ResultsPage() {
   const R = round.results!;
   const r = round.round_no;
   const prev = prevIndicators(r);
+  const tier = collapseTier(R.indicators, prev);
+
+  const circNow = computeCirculation({ rounds, currentRound: r, level: R.level });
+  const circPrev = r > 1 ? computeCirculation({ rounds, currentRound: r - 1, level: R.level }) : null;
+  const circDelta = Math.round((circNow.total - (circPrev?.total ?? 0)) * 10) / 10;
+  const { issued: roundIssued, removed: roundRemoved } = roundFlow(round, rounds[r - 1], R.level);
   const headName = (g: string) => {
     const id = heads[g as keyof typeof heads];
     const p = id && participants.find((x) => x.id === id);
@@ -92,30 +99,43 @@ export default function ResultsPage() {
         <div className="text-[11px] text-neutral-400 mt-1">
           next session starts at {fmt(Math.round(v * 0.9 * 10) / 10)} after natural decline
         </div>
+        {R.absorbed[k] > 0 && (
+          <div className="text-[11px] text-red-400 mt-1 font-semibold">
+            floor applied — raw {fmt(R.raw[k])}, clipped to {fmt(v)} (−{fmt(R.absorbed[k])} absorbed)
+          </div>
+        )}
       </div>
     );
   });
 
+  const anyClipped = (Object.keys(NAMES) as (keyof Indicators)[]).some((k) => R.absorbed[k] > 0);
+
+  // Trajectory-based collapse warning: the engine's −30 floor means any
+  // indicator whose next-session starting value is ≤30 can reach zero in a
+  // single round — that's the real red line, not an arbitrary level.
   const warns: { sev: Severity; text: string }[] = [];
   (Object.keys(NAMES) as (keyof Indicators)[]).forEach((k) => {
     const v = R.indicators[k];
-    const headroom = Math.round(v * 0.9 * 10) / 10;
-    if (v < 0) warns.push({ sev: "danger", text: `☠ ${k} is below zero — the society has COLLAPSED.` });
-    else if (v < 10)
+    const { tier: kTier, nextStart, roundsToZero } = tier.perIndicator[k];
+    if (kTier === "collapsed") {
+      warns.push({ sev: "danger", text: `☠ ${k} is below zero — the society has COLLAPSED.` });
+    } else if (kTier === "critical") {
       warns.push({
         sev: "danger",
-        text: `⛔ ${k} = ${fmt(v)} — CRITICAL: only ${headroom} points from collapse; multiplier already at 0.1.`,
+        text:
+          nextStart <= 30
+            ? `⛔ ${k} = ${fmt(v)} — CRITICAL: next session starts at ${fmt(nextStart)}, reachable to zero in a single bad round.`
+            : `⛔ ${k} = ${fmt(v)} — CRITICAL: only ${fmt(nextStart)} points from collapse.`,
       });
-    else if (v < 25)
+    } else if (kTier === "watch") {
       warns.push({
         sev: "warning",
-        text: `⚠ ${k} = ${fmt(v)} — danger close: one bad session could push it below 0. Headroom: ${headroom}.`,
+        text:
+          roundsToZero !== null && roundsToZero <= 3
+            ? `⚠ ${k} = ${fmt(v)} — watch: at this rate of decline, zero is ${fmt(roundsToZero)} rounds away.`
+            : `⚠ ${k} = ${fmt(v)} — watch: below 50, dragging multiplier down (×${R.mult ?? "—"}).`,
       });
-    else if (v < 50)
-      warns.push({
-        sev: "neutral",
-        text: `👁 ${k} = ${fmt(v)} — watch: dragging multiplier down (×${R.mult ?? "—"}).`,
-      });
+    }
   });
 
   const multTxt = R.mult === null ? "COLLAPSE" : `×${R.mult}`;
@@ -173,12 +193,47 @@ export default function ResultsPage() {
             ))}
           </div>
         ) : (
-          <div className={`text-xs border rounded px-3 py-2 mt-3 ${SEVERITY_BANNER.success}`}>✓ No indicators near collapse.</div>
+          <div className={`text-xs border rounded px-3 py-2 mt-3 ${SEVERITY_BANNER.success}`}>
+            ✓ Stable — no indicator projected to reach zero within three rounds at its current rate of decline.
+          </div>
+        )}
+        {anyClipped && (
+          <div className={`text-xs border rounded px-3 py-2 mt-2 ${SEVERITY_BANNER.danger}`}>
+            🛡 The −30 floor absorbed damage this round —{" "}
+            {(Object.keys(NAMES) as (keyof Indicators)[])
+              .filter((k) => R.absorbed[k] > 0)
+              .map((k) => `${k} −${fmt(R.absorbed[k])}`)
+              .join(", ")}
+            . The society took more damage than the displayed numbers show.
+          </div>
         )}
         <p className="text-xs text-neutral-400 mt-3">
           Pop: {R.pop} · Absent: {R.absentees} · Unemployed: {R.unemployed} · Deaths: {R.deaths} · Rioters:{" "}
           {R.rioters} · Guard posts: {R.guardPosts} · Arrests: {R.arrests}
         </p>
+      </div>
+
+      <div className="border rounded-lg p-4 mt-4">
+        <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-2">Money Supply</h2>
+        <div className="flex items-end gap-4 flex-wrap">
+          <div>
+            <div className={TYPE.kpi}>${fmt(circNow.total)}</div>
+            <div className="text-[10px] uppercase text-neutral-400">In circulation</div>
+          </div>
+          <div className={`text-sm font-semibold font-mono ${circDelta > 0 ? SEVERITY_TEXT.success : circDelta < 0 ? SEVERITY_TEXT.danger : "text-neutral-400"}`}>
+            {circDelta > 0 ? "▲" : circDelta < 0 ? "▼" : "—"} ${fmt(Math.abs(circDelta))} this round
+          </div>
+        </div>
+        <p className="text-xs text-neutral-400 mt-2">
+          Issued this round: <b className="text-neutral-300">${fmt(roundIssued)}</b> (payments + withdrawals) · Removed
+          this round: <b className="text-neutral-300">${fmt(roundRemoved)}</b> (purchases + fees + levies)
+        </p>
+        {Math.abs(circNow.variance) > 0.05 && (
+          <p className="text-xs text-amber-400 mt-1">
+            ⚠ Region + group cash (${fmt(circNow.total)}) vs. tracked flows since Session 1 (${fmt(circNow.flowTotal)})
+            — variance ${fmt(circNow.variance)}. A coordinator&apos;s aid, not a hard constraint.
+          </p>
+        )}
       </div>
 
       <div className="grid md:grid-cols-2 gap-4 mt-4">

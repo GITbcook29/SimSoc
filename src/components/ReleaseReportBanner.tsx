@@ -32,7 +32,11 @@ export function ReleaseReportBanner() {
         onClick={() => startNextSession()}
         className="bg-[var(--accent)] text-[var(--accent-ink)] font-semibold hover:brightness-110 rounded-lg px-4 py-2 text-sm"
       >
-        Release Session {latestClosed} report &rarr;
+        {/* The explicit {" "} is load-bearing: this Next.js version's JSX transform drops a text
+            run's leading space when that run contains an HTML entity (here &rarr;), rendering
+            "Session 1report". Don't collapse it back into a plain space. */}
+        Release Session {latestClosed}{" "}
+        report &rarr;
       </button>
     </div>
   );

@@ -16,6 +16,7 @@ import {
   defaultInputs,
   defaultDisaster,
   defaultElection,
+  defaultCirculation,
   sizeLevel,
 } from "@/lib/simsoc-engine.js";
 import {
@@ -73,8 +74,9 @@ type GameContextValue = {
   setStatus: (id: string, code: "P" | "A" | "E" | "D") => Promise<void>;
   setFlag: (id: string, flag: "ns" | "lux" | "ptc") => Promise<void>;
   setInput: <K extends keyof RoundInputs>(key: K, value: RoundInputs[K]) => Promise<void>;
-  setDisInput: (key: string, value: string | number) => Promise<void>;
-  setElecInput: (key: string, value: string | number | boolean) => Promise<void>;
+  setDisInput: (key: string, value: string | number | Partial<Record<Region, number>>) => Promise<void>;
+  setElecInput: (key: string, value: string | number | boolean | Partial<Record<Region, number>>) => Promise<void>;
+  setCirculationInput: (patch: Partial<RoundInputs["circulation"]>) => Promise<void>;
   tally: (key: "rioters" | "guardPosts" | "arrests" | "goalsPos" | "goalsNeg", d: number) => Promise<void>;
   closeSession: (opts?: { force?: boolean }) => Promise<{ ok: boolean; needsConfirm?: number; collapsed?: boolean }>;
   reopenRound: (roundNo: number) => Promise<void>;
@@ -579,7 +581,7 @@ export function GameProvider({
   );
 
   const setDisInput = useCallback(
-    async (key: string, value: string | number) => {
+    async (key: string, value: string | number | Partial<Record<Region, number>>) => {
       await updateRoundInputs(currentRound, (inputs) => ({
         dis: { ...defaultDisaster(), ...inputs.dis, [key]: value },
       }));
@@ -588,9 +590,21 @@ export function GameProvider({
   );
 
   const setElecInput = useCallback(
-    async (key: string, value: string | number | boolean) => {
+    async (key: string, value: string | number | boolean | Partial<Record<Region, number>>) => {
       await updateRoundInputs(currentRound, (inputs) => ({
         elec: { ...defaultElection(), ...inputs.elec, [key]: value },
+      }));
+    },
+    [currentRound, updateRoundInputs]
+  );
+
+  // Shallow-merge into the round's `circulation` object — used by the
+  // Treasury & Circulation panel for region cash, group cash overrides,
+  // bank fee counts, and the removal/injection repeaters.
+  const setCirculationInput = useCallback(
+    async (patch: Partial<RoundInputs["circulation"]>) => {
+      await updateRoundInputs(currentRound, (inputs) => ({
+        circulation: { ...defaultCirculation(), ...inputs.circulation, ...patch },
       }));
     },
     [currentRound, updateRoundInputs]
@@ -776,6 +790,7 @@ export function GameProvider({
     setInput,
     setDisInput,
     setElecInput,
+    setCirculationInput,
     tally,
     closeSession,
     reopenRound,

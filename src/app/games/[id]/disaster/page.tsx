@@ -2,6 +2,8 @@
 
 import { useGame } from "../game-context";
 import type { DisasterInputs } from "@/lib/types";
+import { disasterLevyRows } from "@/lib/simsoc-engine.js";
+import { fmt } from "@/lib/derive";
 import { CardSkeleton } from "@/components/Skeleton";
 
 const DIS_PRESETS: Record<string, Partial<DisasterInputs>> = {
@@ -75,6 +77,7 @@ export default function DisasterPage() {
   if (loading) return <CardSkeleton rows={7} />;
   const round = rounds[currentRound];
   if (!round) return null;
+  const rawD = (round.inputs.dis as Partial<DisasterInputs> | undefined) ?? {};
   const D: DisasterInputs = {
     title: "",
     dFES: 0,
@@ -85,8 +88,11 @@ export default function DisasterPage() {
     levy: 0,
     closures: "",
     rules: "",
-    ...(round.inputs.dis as Partial<DisasterInputs> | undefined),
+    ...rawD,
+    levyCollected: { ...(rawD.levyCollected || {}) },
+    inKind: { ...(rawD.inKind || {}) },
   };
+  const levyRows = disasterLevyRows(D);
 
   async function applyPreset(name: string) {
     const preset = DIS_PRESETS[name];
@@ -102,9 +108,9 @@ export default function DisasterPage() {
           Natural Disaster — Session {currentRound}
         </h2>
         <p className="text-xs text-neutral-500 mb-2">
-          Effects entered here hit the National Indicators when you close <b>this</b> session, and the event is
-          announced in that session&apos;s MasMed report. Session 1 indicators are fixed at 100, so disasters take
-          effect from Session 2 onward. The −30 floor still applies.
+          Effects entered here hit the National Indicators when you close <b>this</b>{" "}
+          session, and the event is announced in that session&apos;s MasMed report. Session 1 indicators are fixed
+          at 100, so disasters take effect from Session 2 onward. The −30 floor still applies.
         </p>
         <div className="flex items-center gap-2 my-2">
           <span className="text-xs w-32 shrink-0">Title / type</span>
@@ -151,7 +157,7 @@ export default function DisasterPage() {
           />
         </div>
         <div className="flex items-center gap-2 py-1 text-sm">
-          <span className="flex-1 text-xs text-neutral-500">FEMA levy collected ($, out of circulation)</span>
+          <span className="flex-1 text-xs text-neutral-500">FEMA levy assessed ($ total, split evenly per region)</span>
           <input
             type="number"
             defaultValue={D.levy}
@@ -160,6 +166,69 @@ export default function DisasterPage() {
             className="w-20 border rounded px-2 py-1 text-right text-sm"
           />
         </div>
+        {D.levy > 0 && (
+          <>
+            <h3 className="text-xs text-neutral-500 mt-2 mb-1">
+              Levy collection — only collected $ leaves circulation; a region that can&apos;t pay is a real shortfall
+            </h3>
+            <table className="w-full text-xs border-collapse mb-2">
+              <thead>
+                <tr className="text-left text-neutral-400">
+                  <th>Region</th>
+                  <th>Assessed</th>
+                  <th>Collected</th>
+                  <th>Shortfall</th>
+                  <th>In-kind (cards)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {levyRows.map((row) => (
+                  <tr key={row.region} className="border-t">
+                    <td>{row.region}</td>
+                    <td>${fmt(row.assessed)}</td>
+                    <td>
+                      <input
+                        type="number"
+                        defaultValue={row.collected}
+                        key={"lc" + row.region + row.collected}
+                        onBlur={(e) =>
+                          setDisInput("levyCollected", {
+                            ...D.levyCollected,
+                            [row.region]: e.target.value === "" ? 0 : +e.target.value,
+                          })
+                        }
+                        className="w-16 border rounded px-1 py-0.5 text-right"
+                      />
+                    </td>
+                    <td className={row.shortfall > 0 ? "text-amber-500 font-semibold" : ""}>
+                      {row.shortfall > 0 ? `$${fmt(row.shortfall)}` : "—"}
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        defaultValue={row.inKind}
+                        key={"lk" + row.region + row.inKind}
+                        onBlur={(e) =>
+                          setDisInput("inKind", {
+                            ...D.inKind,
+                            [row.region]: e.target.value === "" ? 0 : +e.target.value,
+                          })
+                        }
+                        className="w-14 border rounded px-1 py-0.5 text-right"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {levyRows.some((r) => r.shortfall > 0) && (
+              <p className="text-xs bg-amber-500/10 border border-amber-500/40 text-amber-100 rounded px-3 py-2 mb-2">
+                ⚠ Total shortfall: ${fmt(levyRows.reduce((a, r) => a + r.shortfall, 0))} — this is a political event
+                (a region that couldn&apos;t pay), not an accounting error.
+              </p>
+            )}
+          </>
+        )}
         <h3 className="text-xs text-neutral-500 mt-2 mb-1">Travel / road closures</h3>
         <textarea
           defaultValue={D.closures}

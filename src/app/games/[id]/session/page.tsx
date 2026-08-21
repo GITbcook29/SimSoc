@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGame } from "../game-context";
-import { REGIONS, type AttendanceCode } from "@/lib/types";
-import { basinPaymentFromInputs, basinPurchasedCount, LV } from "@/lib/simsoc-engine.js";
+import { HEADROLES, REGIONS, type AttendanceCode, type HeadRole, type Region } from "@/lib/types";
+import { basinPaymentFromInputs, basinPurchasedCount, computeCirculation, defaultCirculation, BANK_FEES, LV } from "@/lib/simsoc-engine.js";
 import { countStatus, fmt, isDead, newDeaths } from "@/lib/derive";
 import { TableSkeleton } from "@/components/Skeleton";
 import { ReleaseReportBanner } from "@/components/ReleaseReportBanner";
@@ -31,6 +31,7 @@ export default function SessionPage() {
     setStatus,
     setFlag,
     setInput,
+    setCirculationInput,
     setConfig,
     closeSession,
   } = useGame();
@@ -66,6 +67,55 @@ export default function SessionPage() {
   const passageErrors = Array.from({ length: I.basinPassages }, (_, i) => I.basinPassageErrors?.[i] ?? 0);
   const bp = basinPaymentFromInputs(I, level);
   const rw = Math.min(I.retsinWords, I.retsinAnagramsIn ? 5 * I.retsinAnagramsIn : I.retsinWords);
+
+  // Rounds created before this feature may have no `circulation` key at all.
+  const rawC = I.circulation || defaultCirculation();
+  const C = {
+    ...defaultCirculation(),
+    ...rawC,
+    regionCash: { ...defaultCirculation().regionCash, ...(rawC.regionCash || {}) },
+    bankFees: { ...defaultCirculation().bankFees, ...(rawC.bankFees || {}) },
+  };
+  const circ = computeCirculation({ rounds, currentRound, level });
+  const feeTotal =
+    C.bankFees.ptc * BANK_FEES.ptc +
+    C.bankFees.lux * BANK_FEES.lux +
+    C.bankFees.moving * BANK_FEES.moving +
+    C.bankFees.transfer * BANK_FEES.transfer +
+    I.guardPosts * BANK_FEES.guardPost;
+
+  async function commitRegionCash(region: Region, v: number) {
+    await setCirculationInput({ regionCash: { ...C.regionCash, [region]: Math.max(0, v) } });
+  }
+  async function commitGroupCashOverride(role: HeadRole, raw: string) {
+    const next = { ...C.groupCash };
+    if (raw === "") delete next[role];
+    else next[role] = Math.max(0, +raw);
+    await setCirculationInput({ groupCash: next });
+  }
+  async function commitFee(key: keyof typeof C.bankFees, v: number) {
+    await setCirculationInput({ bankFees: { ...C.bankFees, [key]: Math.max(0, Math.round(v)) } });
+  }
+  async function addRemoval() {
+    await setCirculationInput({ removals: [...C.removals, { label: "", amount: 0 }] });
+  }
+  async function updateRemoval(i: number, patch: Partial<{ label: string; amount: number }>) {
+    const next = C.removals.map((x, idx) => (idx === i ? { ...x, ...patch } : x));
+    await setCirculationInput({ removals: next });
+  }
+  async function removeRemoval(i: number) {
+    await setCirculationInput({ removals: C.removals.filter((_, idx) => idx !== i) });
+  }
+  async function addInjection() {
+    await setCirculationInput({ injections: [...C.injections, { label: "", amount: 0 }] });
+  }
+  async function updateInjection(i: number, patch: Partial<{ label: string; amount: number }>) {
+    const next = C.injections.map((x, idx) => (idx === i ? { ...x, ...patch } : x));
+    await setCirculationInput({ injections: next });
+  }
+  async function removeInjection(i: number) {
+    await setCirculationInput({ injections: C.injections.filter((_, idx) => idx !== i) });
+  }
 
   async function commitPassagesCompleted(v: number) {
     const n = Math.max(0, Math.round(v));
@@ -292,6 +342,114 @@ export default function SessionPage() {
             <NumRow label="EMPIN" value={I.scEMPIN} onCommit={(v) => setInput("scEMPIN", v)} />
             <NumRow label="HUMSERV" value={I.scHUMSERV} onCommit={(v) => setInput("scHUMSERV", v)} />
             <NumRow label="MASMED" value={I.scMASMED} onCommit={(v) => setInput("scMASMED", v)} />
+          </div>
+
+          <div className="border rounded-lg p-4">
+            <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-2">Treasury &amp; Circulation</h2>
+            <p className="text-xs text-neutral-500 mb-2">
+              A coordinator&apos;s aid, not a hard constraint — the books not balancing never blocks closing a
+              session.
+            </p>
+            <h3 className="text-xs text-neutral-500 mb-1">Region cash (counted)</h3>
+            {REGIONS.map((r) => (
+              <NumRow key={r} label={r} value={C.regionCash[r]} min={0} onCommit={(v) => commitRegionCash(r, v)} />
+            ))}
+
+            <h3 className="text-xs text-neutral-500 mt-3 mb-1">Group treasuries — derived, override to count</h3>
+            {HEADROLES.map((g) => (
+              <div key={g} className="flex items-center gap-2 py-1 text-sm">
+                <span className="flex-1 text-xs text-neutral-500">
+                  {g} <span className="text-neutral-600">(derived ${fmt(circ.groupDerived[g])})</span>
+                </span>
+                <input
+                  type="number"
+                  defaultValue={C.groupCash[g] ?? ""}
+                  key={g + (C.groupCash[g] ?? "d")}
+                  placeholder={fmt(circ.groupDerived[g])}
+                  aria-label={`${g} counted treasury override`}
+                  onBlur={(e) => commitGroupCashOverride(g, e.target.value)}
+                  className="w-20 border rounded px-2 py-1 text-right text-sm"
+                />
+              </div>
+            ))}
+
+            <h3 className="text-xs text-neutral-500 mt-3 mb-1">Bank fee counts</h3>
+            <NumRow label="PTC issued" ariaLabel={`PTC issued — $${BANK_FEES.ptc} each`} value={C.bankFees.ptc} min={0} step={1} onCommit={(v) => commitFee("ptc", v)} />
+            <NumRow label="Luxury Living Endowment" ariaLabel={`Luxury Living Endowment — $${BANK_FEES.lux} each`} value={C.bankFees.lux} min={0} step={1} onCommit={(v) => commitFee("lux", v)} />
+            <NumRow label="Moving fee" ariaLabel={`Moving fee — $${BANK_FEES.moving} each`} value={C.bankFees.moving} min={0} step={1} onCommit={(v) => commitFee("moving", v)} />
+            <NumRow label="PTC transfers" ariaLabel={`PTC transfer — $${BANK_FEES.transfer} each`} value={C.bankFees.transfer} min={0} step={1} onCommit={(v) => commitFee("transfer", v)} />
+            <p className="text-xs text-neutral-500 mt-1">
+              Fees this round: <b>${fmt(feeTotal)}</b> (guard posts reuse the {I.guardPosts} already tallied above ×
+              ${BANK_FEES.guardPost}).
+            </p>
+
+            <h3 className="text-xs text-neutral-500 mt-3 mb-1">Ad hoc removals</h3>
+            {C.removals.map((x, i) => (
+              <div key={i} className="flex items-center gap-1 py-0.5 text-sm">
+                <input
+                  defaultValue={x.label}
+                  key={"rl" + i + x.label}
+                  placeholder="Label"
+                  aria-label="Removal label"
+                  onBlur={(e) => updateRemoval(i, { label: e.target.value })}
+                  className="flex-1 border rounded px-2 py-1 text-xs"
+                />
+                <input
+                  type="number"
+                  defaultValue={x.amount}
+                  key={"ra" + i + x.amount}
+                  aria-label="Removal amount"
+                  onBlur={(e) => updateRemoval(i, { amount: +e.target.value || 0 })}
+                  className="w-16 border rounded px-2 py-1 text-right text-xs"
+                />
+                <button onClick={() => removeRemoval(i)} className="text-neutral-400 hover:text-red-500 px-1">
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button onClick={addRemoval} className="border rounded px-2 py-1 text-xs mt-1">
+              + Add removal
+            </button>
+
+            <h3 className="text-xs text-neutral-500 mt-3 mb-1">Ad hoc injections</h3>
+            {C.injections.map((x, i) => (
+              <div key={i} className="flex items-center gap-1 py-0.5 text-sm">
+                <input
+                  defaultValue={x.label}
+                  key={"il" + i + x.label}
+                  placeholder="Label"
+                  aria-label="Injection label"
+                  onBlur={(e) => updateInjection(i, { label: e.target.value })}
+                  className="flex-1 border rounded px-2 py-1 text-xs"
+                />
+                <input
+                  type="number"
+                  defaultValue={x.amount}
+                  key={"ia" + i + x.amount}
+                  aria-label="Injection amount"
+                  onBlur={(e) => updateInjection(i, { amount: +e.target.value || 0 })}
+                  className="w-16 border rounded px-2 py-1 text-right text-xs"
+                />
+                <button onClick={() => removeInjection(i)} className="text-neutral-400 hover:text-red-500 px-1">
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button onClick={addInjection} className="border rounded px-2 py-1 text-xs mt-1">
+              + Add injection
+            </button>
+
+            <div className="mt-3 pt-3 border-t">
+              <div className="text-lg font-bold font-mono">${fmt(circ.total)}</div>
+              <div className="text-[10px] uppercase text-neutral-400">In circulation</div>
+              <p className="text-xs text-neutral-500 mt-1">
+                Issued ${fmt(circ.issuedTotal)} − removed ${fmt(circ.removedTotal)} since Session 1 = $
+                {fmt(circ.flowTotal)}
+                {Math.abs(circ.variance) > 0.05 && (
+                  <span className="text-amber-400"> (variance ${fmt(circ.variance)} vs. counted total)</span>
+                )}
+              </p>
+            </div>
           </div>
         </div>
       </div>

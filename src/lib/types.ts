@@ -48,6 +48,8 @@ export type Participant = {
 
 export type GameHeads = Partial<Record<HeadRole, string | null>>;
 
+export type RegionAmounts = Record<Region, number>;
+
 export type DisasterInputs = {
   title: string;
   dFES: number;
@@ -56,6 +58,14 @@ export type DisasterInputs = {
   dPC: number;
   subForfeit: number;
   levy: number;
+  // Coordinator-entered actual cash collected per region, against the levy
+  // assessed evenly across the four regions (levy / 4). Absent/undefined for
+  // a region means "assume fully collected" (backward compat with rounds
+  // saved before this field existed).
+  levyCollected: Partial<RegionAmounts>;
+  // Subsistence cards forfeited in lieu of cash, per region. Informational
+  // only — never counted as money in the circulation total.
+  inKind: Partial<RegionAmounts>;
   closures: string;
   rules: string;
 };
@@ -65,11 +75,35 @@ export type ElectionInputs = {
   winner: "" | "POP" | "SOP";
   levyPerMember: number;
   levyFlat: number;
+  // Coordinator-entered actual cash collected per region, against the
+  // assessed levy (members * levyPerMember + levyFlat). Absent means
+  // "assume fully collected" (backward compat).
+  levyCollected: Partial<RegionAmounts>;
+  inKind: Partial<RegionAmounts>;
   dFES: number;
   dSL: number;
   dSC: number;
   dPC: number;
   notes: string;
+};
+
+export type CirculationRemoval = { label: string; amount: number };
+export type CirculationInjection = { label: string; amount: number };
+
+export type CirculationInputs = {
+  // Coordinator-counted cash currently held in each region — a snapshot,
+  // re-entered/updated as often as they physically check.
+  regionCash: RegionAmounts;
+  // Coordinator-counted override per group treasury. A group absent from
+  // this map falls back to the derived (opening + income − spending) value.
+  groupCash: Partial<Record<HeadRole, number>>;
+  // Bank fee counts (not dollars) for this round: PTC issued, Luxury Living
+  // Endowment, moving fee, PTC transfer. Multiplied by fixed $ amounts
+  // (BANK_FEES in simsoc-engine.js). Guard-post fees reuse the existing
+  // `guardPosts` tally rather than duplicating a count here.
+  bankFees: { ptc: number; lux: number; moving: number; transfer: number };
+  removals: CirculationRemoval[];
+  injections: CirculationInjection[];
 };
 
 export type RoundInputs = {
@@ -97,6 +131,7 @@ export type RoundInputs = {
   goalsNeg: number;
   dis: DisasterInputs;
   elec: ElectionInputs;
+  circulation: CirculationInputs;
 };
 
 export type Indicators = { FES: number; SL: number; SC: number; PC: number };
@@ -111,6 +146,10 @@ export type RoundResults = {
   guardPosts: number;
   arrests: number;
   indicators: Indicators;
+  // Pre-floor computed indicators, and the amount the −30 floor absorbed
+  // (clippedValue − rawValue, 0 when not clipped) for each indicator.
+  raw: Indicators;
+  absorbed: Indicators;
   minInd: number;
   mult: number | null;
   basinPay: number;
@@ -126,11 +165,34 @@ export type RoundResults = {
 };
 
 export type TreasuryResult = {
-  rows: { region: Region; members: number; amount: number }[];
+  rows: { region: Region; members: number; assessed: number; collected: number; shortfall: number; inKind: number }[];
+  // `total` is the collected total — the money actually redistributed. A
+  // shortfall (assessed > collected) means the winning heads receive less,
+  // per the Coordinator's Manual: levies are assessed, not auto-collected.
   total: number;
+  totalAssessed: number;
+  totalShortfall: number;
   recips: string[];
   share: number;
 };
+
+export type CirculationSnapshot = {
+  level: number;
+  round: number;
+  regionCash: RegionAmounts;
+  groupDerived: Record<HeadRole, number>;
+  groupCashOverride: Partial<Record<HeadRole, number>>;
+  groupTreasury: Record<HeadRole, number>;
+  totalRegion: number;
+  totalGroup: number;
+  total: number;
+  issuedTotal: number;
+  removedTotal: number;
+  flowTotal: number;
+  variance: number;
+};
+
+export type RoundFlow = { issued: number; removed: number };
 
 export type Round = {
   id: string;

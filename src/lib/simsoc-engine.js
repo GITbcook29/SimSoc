@@ -32,6 +32,11 @@ export const LV = {
 // to handle purchase costs by hand.
 export const BASIN_CHARGE_FOR_PASSAGE_PURCHASES = true;
 
+// Fixed dollar amounts per bank-fee count entered on the Session tab's
+// Treasury & Circulation panel. Guard-post fees reuse the existing
+// `guardPosts` tally rather than a separate count.
+export const BANK_FEES = { ptc: 25, lux: 25, moving: 10, transfer: 3, guardPost: 20 };
+
 export const REGIONS = ["Red", "Yellow", "Blue", "Green"];
 export const HEADROLES = ["BASIN", "RETSIN", "POP", "SOP", "EMPIN", "HUMSERV", "MASMED", "JUDCO"];
 
@@ -122,22 +127,50 @@ export function retsinPayment(anagramsIn, words, level) {
 const round1 = (n) => Math.round(n * 10) / 10;
 
 /**
- * Election treasury: levy per living citizen + flat per region, distributed to the
- * winning coalition's three heads. `regionLiving` = [Red, Yellow, Blue, Green] counts.
+ * Election treasury: levy per living citizen + flat per region, assessed against
+ * every region regardless of whether it has group heads (Red has none — a levy it
+ * cannot institutionally earn back is the point of the simulation, not a bug).
+ * Only the amount actually COLLECTED is redistributed to the winning coalition's
+ * heads — a region that cannot pay produces a real shortfall, not silent auto-payment.
+ * `regionLiving` = [Red, Yellow, Blue, Green] counts. `election.levyCollected` is a
+ * coordinator-entered { Red, Yellow, Blue, Green } map; a region absent from it is
+ * treated as fully collected (backward compat with rounds before this field existed).
  */
 export function electionTreasury(election, regionLiving) {
+  const collectedMap = election.levyCollected || {};
+  const inKindMap = election.inKind || {};
   const rows = REGIONS.map((region, i) => {
     const members = regionLiving[i] || 0;
-    return {
-      region,
-      members,
-      amount: members > 0 ? members * (election.levyPerMember || 0) + (election.levyFlat || 0) : 0,
-    };
+    const assessed = members > 0 ? members * (election.levyPerMember || 0) + (election.levyFlat || 0) : 0;
+    const collected = collectedMap[region] != null ? collectedMap[region] : assessed;
+    return { region, members, assessed, collected, shortfall: Math.max(0, assessed - collected), inKind: inKindMap[region] || 0 };
   });
-  const total = rows.reduce((a, b) => a + b.amount, 0);
+  const totalAssessed = rows.reduce((a, b) => a + b.assessed, 0);
+  const total = rows.reduce((a, b) => a + b.collected, 0);
+  const totalShortfall = rows.reduce((a, b) => a + b.shortfall, 0);
   const recips = ELECTION_RECIPIENTS[election.winner] || [];
   const share = recips.length ? round1(total / recips.length) : 0;
-  return { rows, total, recips, share };
+  return { rows, total, totalAssessed, totalShortfall, recips, share };
+}
+
+// Disaster levy assessment is a flat per-session $ amount split evenly across
+// the four regions (matches the hurricane preset's "$10 to FEMA" per region on
+// a $40 total levy). `levyCollected` is a coordinator-entered { Red, Yellow,
+// Blue, Green } map; a region absent from it is treated as fully collected.
+export function disasterLevyAssessedPerRegion(D) {
+  return (D.levy || 0) / REGIONS.length;
+}
+export function disasterLevyRows(D) {
+  const assessed = disasterLevyAssessedPerRegion(D);
+  const collectedMap = D.levyCollected || {};
+  const inKindMap = D.inKind || {};
+  return REGIONS.map((region) => {
+    const collected = collectedMap[region] != null ? collectedMap[region] : assessed;
+    return { region, assessed, collected, shortfall: Math.max(0, assessed - collected), inKind: inKindMap[region] || 0 };
+  });
+}
+export function disasterLevyCollectedTotal(D) {
+  return disasterLevyRows(D).reduce((a, r) => a + r.collected, 0);
 }
 
 /**
@@ -164,12 +197,14 @@ export function computeRound(ctx) {
   const basinAcceptable = basinAcceptablePassages(I);
 
   // --- National Indicators ---
-  let ind;
+  let ind, rawInd, absorbed;
   if (round === 1) {
     ind = { FES: 100, SL: 100, SC: 100, PC: 100 };
+    rawInd = { ...ind };
+    absorbed = { FES: 0, SL: 0, SC: 0, PC: 0 };
   } else {
     const rEff = riotEffect(I.rioters / pop);
-    const raw = {
+    const rawCalc = {
       FES: 0.9 * prev.FES + 0.4 * I.invRC - 2 * basinPurchased + D.dFES + E.dFES,
       SL:  0.9 * prev.SL + 0.1 * I.invRC + 0.1 * I.invWelfare + basinAcceptable + I.retsinAnagramsIn
            - 2 * absentees - 3 * unemployed - 5 * deaths + D.dSL - D.subForfeit + E.dSL,
@@ -179,9 +214,15 @@ export function computeRound(ctx) {
            + rEff - 3 * I.arrests - 5 * deaths + 0.25 * I.goalsPos - I.goalsNeg + D.dPC + E.dPC,
     };
     ind = {};
+    rawInd = {};
+    absorbed = {};
     for (const k of ["FES", "SL", "SC", "PC"]) {
       // −30 floor: no indicator may fall more than 30 below its previous value.
-      ind[k] = round1(Math.max(raw[k], prev[k] - 30));
+      const floor = prev[k] - 30;
+      const clipped = Math.max(rawCalc[k], floor);
+      ind[k] = round1(clipped);
+      rawInd[k] = round1(rawCalc[k]);
+      absorbed[k] = rawCalc[k] < floor ? round1(floor - rawCalc[k]) : 0;
     }
   }
   const minInd = Math.min(ind.FES, ind.SL, ind.SC, ind.PC);
@@ -216,11 +257,135 @@ export function computeRound(ctx) {
   return {
     level, pop, absentees, unemployed, deaths,
     rioters: I.rioters, guardPosts: I.guardPosts, arrests: I.arrests,
-    indicators: ind, minInd, mult,
+    indicators: ind, raw: rawInd, absorbed, minInd, mult,
     basinPay, retsinPay, basinNet, retsinNet, basinPassageCost,
     basic, net, nextRound: round + 1,
     disaster: disasterActive(D) ? D : null,
     election: electionActive(E) ? { ...E, treasury: electionTreasury(E, regionLiving) } : null,
+  };
+}
+
+// ---- Money in circulation -----------------------------------------------------
+// Bank = infinite source/sink, untracked. Group treasuries + region holdings are
+// what's "in circulation". Election levies are collected-from-and-redistributed-to
+// the population, so they are explicitly NOT counted as a removal/injection here —
+// only the disaster (FEMA) levy actually leaves circulation.
+//
+// `round` / `prevRound` are Round rows ({ inputs, results, closed }); `prevRound`
+// may be undefined (round 1). Returns this round's OWN issued/removed money, not
+// a cumulative total — see computeCirculation for the running total across rounds.
+export function roundFlow(round, prevRound, level) {
+  const I = withDefaults(round.inputs);
+  let issued = 0;
+  let removed = 0;
+
+  // Distributed group income is computed at the close of the PRIOR round and
+  // credited at the start of this one.
+  if (prevRound && prevRound.closed && prevRound.results) {
+    for (const g of HEADROLES) issued += prevRound.results.net[g] || 0;
+  }
+  // BASIN/RETSIN withdrawals happen during this round.
+  issued += (I.basinWithdrawn || 0) + (I.retsinWithdrawn || 0);
+  issued += (I.circulation.injections || []).reduce((a, x) => a + (x.amount || 0), 0);
+
+  const isClosed = round.closed && !!round.results;
+  const purchased = basinPurchasedCount(I);
+  const passageCost = isClosed
+    ? round.results.basinPassageCost || 0
+    : BASIN_CHARGE_FOR_PASSAGE_PURCHASES
+    ? purchased * LV.cost[level - 1]
+    : 0;
+  removed += passageCost;
+
+  const fees = I.circulation.bankFees;
+  removed +=
+    (fees.ptc || 0) * BANK_FEES.ptc +
+    (fees.lux || 0) * BANK_FEES.lux +
+    (fees.moving || 0) * BANK_FEES.moving +
+    (fees.transfer || 0) * BANK_FEES.transfer +
+    (I.guardPosts || 0) * BANK_FEES.guardPost;
+
+  removed += disasterLevyCollectedTotal(I.dis);
+  removed += (I.circulation.removals || []).reduce((a, x) => a + (x.amount || 0), 0);
+
+  return { issued, removed };
+}
+
+/**
+ * Running money-in-circulation snapshot as of `currentRound`. Iterates every
+ * round from 1 through currentRound, since group treasuries are derived
+ * (opening balance + income received − recorded spending) rather than stored.
+ *
+ * `rounds` is a { [round_no]: Round } map (as held in GameProvider state).
+ */
+export function computeCirculation({ rounds, currentRound, level }) {
+  const startingPayments = {
+    BASIN: LV.br[level - 1],
+    RETSIN: LV.br[level - 1],
+    POP: LV.pop[level - 1],
+    SOP: LV.pop[level - 1],
+    EMPIN: LV.other[level - 1],
+    HUMSERV: LV.other[level - 1],
+    MASMED: LV.other[level - 1],
+    JUDCO: round1(0.75 * LV.pop[level - 1]),
+  };
+  const groupDerived = { ...startingPayments };
+  let issuedTotal = Object.values(startingPayments).reduce((a, b) => a + b, 0);
+  let removedTotal = 0;
+
+  const roundNos = Object.keys(rounds)
+    .map(Number)
+    .filter((r) => r <= currentRound)
+    .sort((a, b) => a - b);
+
+  for (const r of roundNos) {
+    const round = rounds[r];
+    const prevRound = rounds[r - 1];
+    const { issued, removed } = roundFlow(round, prevRound, level);
+    issuedTotal += issued;
+    removedTotal += removed;
+
+    if (prevRound && prevRound.closed && prevRound.results) {
+      for (const g of HEADROLES) groupDerived[g] += prevRound.results.net[g] || 0;
+    }
+    const I = withDefaults(round.inputs);
+    groupDerived.BASIN += I.basinWithdrawn || 0;
+    groupDerived.RETSIN += I.retsinWithdrawn || 0;
+
+    // Money moved from a head's cash back into the bank-tracked asset pool
+    // (entering a higher "Assets (start of round)" than what carried forward).
+    const carriedBasin = r === 1 ? LV.assets[level - 1] : prevRound?.results?.basinNet ?? LV.assets[level - 1];
+    const carriedRetsin = r === 1 ? LV.assets[level - 1] : prevRound?.results?.retsinNet ?? LV.assets[level - 1];
+    const enteredBasin = I.basinAssets ?? carriedBasin;
+    const enteredRetsin = I.retsinAssets ?? carriedRetsin;
+    removedTotal += Math.max(0, enteredBasin - carriedBasin) + Math.max(0, enteredRetsin - carriedRetsin);
+  }
+
+  const curInputs = withDefaults(rounds[currentRound]?.inputs || {});
+  const regionCash = curInputs.circulation.regionCash;
+  const groupCashOverride = curInputs.circulation.groupCash || {};
+  const groupTreasury = {};
+  for (const g of HEADROLES) groupTreasury[g] = groupCashOverride[g] != null ? groupCashOverride[g] : groupDerived[g];
+
+  const totalRegion = Object.values(regionCash).reduce((a, b) => a + b, 0);
+  const totalGroup = Object.values(groupTreasury).reduce((a, b) => a + b, 0);
+  const total = totalRegion + totalGroup;
+  const flowTotal = issuedTotal - removedTotal;
+
+  return {
+    level,
+    round: currentRound,
+    regionCash,
+    groupDerived,
+    groupCashOverride,
+    groupTreasury,
+    totalRegion,
+    totalGroup,
+    total,
+    issuedTotal,
+    removedTotal,
+    flowTotal,
+    variance: round1(total - flowTotal),
   };
 }
 
@@ -234,17 +399,41 @@ export function defaultInputs() {
     rioters: 0, guardPosts: 0, arrests: 0, goalsPos: 0, goalsNeg: 0,
     dis: defaultDisaster(),
     elec: defaultElection(),
+    circulation: defaultCirculation(),
   };
 }
 export function defaultDisaster() {
-  return { title: "", dFES: 0, dSL: 0, dSC: 0, dPC: 0, subForfeit: 0, levy: 0, closures: "", rules: "" };
+  return { title: "", dFES: 0, dSL: 0, dSC: 0, dPC: 0, subForfeit: 0, levy: 0, levyCollected: {}, inKind: {}, closures: "", rules: "" };
 }
 export function defaultElection() {
-  return { announce: false, winner: "", levyPerMember: 0, levyFlat: 0, dFES: 0, dSL: 0, dSC: 0, dPC: 0, notes: "" };
+  return {
+    announce: false, winner: "", levyPerMember: 0, levyFlat: 0, levyCollected: {}, inKind: {},
+    dFES: 0, dSL: 0, dSC: 0, dPC: 0, notes: "",
+  };
+}
+export function defaultCirculation() {
+  return {
+    regionCash: { Red: 0, Yellow: 0, Blue: 0, Green: 0 },
+    groupCash: {},
+    bankFees: { ptc: 0, lux: 0, moving: 0, transfer: 0 },
+    removals: [],
+    injections: [],
+  };
 }
 function withDefaults(inputs) {
   const base = defaultInputs();
-  return { ...base, ...inputs, dis: { ...base.dis, ...(inputs?.dis || {}) }, elec: { ...base.elec, ...(inputs?.elec || {}) } };
+  return {
+    ...base,
+    ...inputs,
+    dis: { ...base.dis, ...(inputs?.dis || {}) },
+    elec: { ...base.elec, ...(inputs?.elec || {}) },
+    circulation: {
+      ...base.circulation,
+      ...(inputs?.circulation || {}),
+      regionCash: { ...base.circulation.regionCash, ...(inputs?.circulation?.regionCash || {}) },
+      bankFees: { ...base.circulation.bankFees, ...(inputs?.circulation?.bankFees || {}) },
+    },
+  };
 }
 function disasterActive(D) {
   return !!(D.title || D.dFES || D.dSL || D.dSC || D.dPC || D.subForfeit || D.levy || D.closures || D.rules);
@@ -298,4 +487,62 @@ if (typeof process !== "undefined" && process.argv[1] && process.argv[1].endsWit
   assert("BASIN example SL", s3.indicators.SL, round1(90 + 1));
   assert("BASIN example passage cost", s3.basinPassageCost, 120);
   assert("BASIN example net", s3.basinNet, 100 - 0 - 120 + 46);
+
+  // --- Money in circulation ---
+  // Round 1: no prior round, so issuedTotal is just the 8 starting payments,
+  // removedTotal is 0 (nothing purchased/collected/fee'd yet).
+  const round1Row = { id: "r1", game_id: "g", round_no: 1, inputs: defaultInputs(), results: null, closed: false };
+  const c1 = computeCirculation({ rounds: { 1: round1Row }, currentRound: 1, level: 1 });
+  const expectedStart = 10 + 10 + 40 + 40 + 30 + 30 + 30 + 30; // BASIN RETSIN POP SOP EMPIN HUMSERV MASMED JUDCO(0.75*40)
+  assert("circulation round1 issuedTotal = starting payments", c1.issuedTotal, expectedStart);
+  assert("circulation round1 removedTotal", c1.removedTotal, 0);
+  assert("circulation region+group == total", c1.totalRegion + c1.totalGroup, c1.total);
+
+  // Close round 1 with a real payments table, open round 2, and verify:
+  // (a) round 2's issued jumps by exactly the round-1 payments total,
+  // (b) a FEMA levy collected in round 2 lowers circulation by exactly that
+  //     amount, (c) an election levy leaves the total unchanged (redistribution
+  //     within circulation, not a removal).
+  const closedRound1Results = computeRound({
+    round: 1, level: 1, pop: 28, prev: { FES: 100, SL: 100, SC: 100, PC: 100 },
+    counts: { absentees: 0, unemployed: 0, deaths: 0 }, inputs: defaultInputs(), regionLiving: [7, 7, 7, 7],
+  });
+  const closedRound1 = { id: "r1", game_id: "g", round_no: 1, inputs: defaultInputs(), results: closedRound1Results, closed: true };
+  const payoutTotal = Object.values(closedRound1Results.net).reduce((a, b) => a + b, 0);
+
+  const round2Inputs = { ...defaultInputs(), dis: { ...defaultDisaster(), levy: 40, levyCollected: { Red: 10, Yellow: 10, Blue: 10, Green: 10 } } };
+  const round2 = { id: "r2", game_id: "g", round_no: 2, inputs: round2Inputs, results: null, closed: false };
+  const c2 = computeCirculation({ rounds: { 1: closedRound1, 2: round2 }, currentRound: 2, level: 1 });
+  assert("circulation round2 issued = round1 payouts", c2.issuedTotal - c1.issuedTotal, round1(payoutTotal));
+  assert("FEMA levy removes exactly the collected amount", c2.removedTotal, 40);
+
+  const round2WithElection = {
+    ...round2Inputs,
+    elec: { ...defaultElection(), winner: "SOP", levyPerMember: 2, levyFlat: 10, levyCollected: { Red: 26, Yellow: 24, Blue: 24, Green: 24 } },
+  };
+  const round2b = { ...round2, inputs: round2WithElection };
+  const c2b = computeCirculation({ rounds: { 1: closedRound1, 2: round2b }, currentRound: 2, level: 1 });
+  assert("election levy does not change circulation removedTotal", c2b.removedTotal, c2.removedTotal);
+
+  // Election levy shortfall: Red (0 heads) can't pay its $26 assessment
+  // (8 living members * $2 + $10 flat, per the Coordinator's Manual example).
+  const shortfall = electionTreasury({ winner: "SOP", levyPerMember: 2, levyFlat: 10, levyCollected: { Red: 8 } }, [8, 8, 8, 8]);
+  assert("Red assessed $26", shortfall.rows[0].assessed, 26);
+  assert("Red shortfall $18", shortfall.rows[0].shortfall, 18);
+  assert("collected total reflects shortfall", shortfall.total, 8 + 26 + 26 + 26);
+
+  // Floor disclosure: a heavy round (hurricane + riots/arrests/posts/death)
+  // from prev={FES:65,SL:60,SC:65,SC:60}-ish should clip and report absorbed>0.
+  const heavy = {
+    ...defaultInputs(),
+    rioters: 8, arrests: 3, guardPosts: 2,
+    dis: { ...defaultDisaster(), dFES: -10, dSL: -5, subForfeit: 8 },
+  };
+  const s4 = computeRound({
+    round: 2, level: 1, pop: 20, prev: { FES: 65, SL: 60, SC: 65, PC: 60 },
+    counts: { absentees: 0, unemployed: 0, deaths: 1 }, inputs: heavy, regionLiving: [5, 5, 5, 5],
+  });
+  assert("heavy round SC clipped", s4.absorbed.SC > 0, true);
+  assert("heavy round PC clipped", s4.absorbed.PC > 0, true);
+  assert("heavy round raw below clipped for SC", s4.raw.SC < s4.indicators.SC, true);
 }

@@ -41,6 +41,7 @@ export default function HistoryPage() {
               <th>BASIN $</th>
               <th>RETSIN $</th>
               <th>Total paid</th>
+              <th>Floor absorbed</th>
               <th></th>
             </tr>
           </thead>
@@ -65,6 +66,11 @@ export default function HistoryPage() {
                     <td>{fmt(x.basinNet)}</td>
                     <td>{fmt(x.retsinNet)}</td>
                     <td>${fmt(Object.values(x.net).reduce((a, b) => a + b, 0))}</td>
+                    <td className={x.absorbed && Object.values(x.absorbed).some((v) => v > 0) ? "text-red-400 font-semibold" : ""}>
+                      {x.absorbed
+                        ? fmt(Object.values(x.absorbed).reduce((a, b) => a + b, 0)) || "0"
+                        : "—"}
+                    </td>
                     <td>
                       <button onClick={() => handleReopen(r)} className="border rounded px-2 py-0.5">
                         Reopen
@@ -76,7 +82,7 @@ export default function HistoryPage() {
               return (
                 <tr key={r} className="border-t">
                   <td><b>{r}</b></td>
-                  <td colSpan={13} className="text-neutral-400">
+                  <td colSpan={14} className="text-neutral-400">
                     {r === currentRound ? "In progress" : "Not started"}
                   </td>
                   <td></td>

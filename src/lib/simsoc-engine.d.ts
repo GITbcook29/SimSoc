@@ -1,4 +1,17 @@
-import type { DisasterInputs, ElectionInputs, Indicators, RoundInputs, RoundResults, TreasuryResult, Region } from "./types";
+import type {
+  CirculationInputs,
+  CirculationSnapshot,
+  DisasterInputs,
+  ElectionInputs,
+  HeadRole,
+  Indicators,
+  Round,
+  RoundFlow,
+  RoundInputs,
+  RoundResults,
+  TreasuryResult,
+  Region,
+} from "./types";
 
 export const LV: {
   pop: number[];
@@ -11,8 +24,9 @@ export const LV: {
   retsinWd: number[];
 };
 export const BASIN_CHARGE_FOR_PASSAGE_PURCHASES: boolean;
+export const BANK_FEES: { ptc: number; lux: number; moving: number; transfer: number; guardPost: number };
 export const REGIONS: Region[];
-export const HEADROLES: string[];
+export const HEADROLES: HeadRole[];
 export const HEADREGION: Record<string, Region>;
 export const ELECTION_RECIPIENTS: Record<string, string[]>;
 
@@ -26,6 +40,17 @@ export function basinAcceptablePassages(inputs: RoundInputs): number;
 export function basinPaymentFromInputs(inputs: RoundInputs, level: number): number;
 export function retsinPayment(anagramsIn: number, words: number, level: number): number;
 export function electionTreasury(election: Partial<ElectionInputs>, regionLiving: number[]): TreasuryResult;
+export function disasterLevyAssessedPerRegion(dis: Partial<DisasterInputs>): number;
+export function disasterLevyRows(
+  dis: Partial<DisasterInputs>
+): { region: Region; assessed: number; collected: number; shortfall: number; inKind: number }[];
+export function disasterLevyCollectedTotal(dis: Partial<DisasterInputs>): number;
+export function roundFlow(round: Round, prevRound: Round | undefined, level: number): RoundFlow;
+export function computeCirculation(ctx: {
+  rounds: Record<number, Round>;
+  currentRound: number;
+  level: number;
+}): CirculationSnapshot;
 
 export function computeRound(ctx: {
   round: number;
@@ -40,3 +65,4 @@ export function computeRound(ctx: {
 export function defaultInputs(): RoundInputs;
 export function defaultDisaster(): DisasterInputs;
 export function defaultElection(): ElectionInputs;
+export function defaultCirculation(): CirculationInputs;

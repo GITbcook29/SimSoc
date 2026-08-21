@@ -1,4 +1,5 @@
 import { fmt } from "@/lib/derive";
+import { disasterLevyCollectedTotal, disasterLevyRows } from "@/lib/simsoc-engine.js";
 import type { RoundInputs, RoundResults } from "@/lib/types";
 
 // The MasMed "Report to MASMED" paper document. Intentionally a white
@@ -35,6 +36,14 @@ export function MasmedReport({
     return p.join(" · ");
   };
   const disEffectText = (ev: { dFES: number; dSL: number; dSC: number; dPC: number }) => elecEffectText(ev);
+
+  const disLevyRows = D ? disasterLevyRows(D) : [];
+  const disShortfallRegions = disLevyRows.filter((r) => r.shortfall > 0);
+  const disShortfall = disShortfallRegions.reduce((a, r) => a + r.shortfall, 0);
+  const disInKindRegions = disLevyRows.filter((r) => r.inKind > 0);
+  const elecShortfallRegions = E?.treasury ? E.treasury.rows.filter((r) => r.shortfall > 0) : [];
+  const elecShortfall = elecShortfallRegions.reduce((a, r) => a + r.shortfall, 0);
+  const elecInKindRegions = E?.treasury ? E.treasury.rows.filter((r) => r.inKind > 0) : [];
 
   return (
     <div className="bg-white text-black rounded-lg p-6 border">
@@ -108,7 +117,18 @@ export function MasmedReport({
         <div className="border-2 border-red-700 bg-red-50 rounded-lg p-3 mt-4">
           <div className="font-extrabold text-red-700">🌀 NATURAL DISASTER: {D.title || "Unnamed event"}</div>
           {disEffectText(D) && <div className="mt-1"><b>Effects on National Indicators:</b> {disEffectText(D)}</div>}
-          {D.levy > 0 && <div><b>FEMA levy collected:</b> ${D.levy} (removed from circulation)</div>}
+          {D.levy > 0 && <div><b>FEMA levy assessed:</b> ${fmt(D.levy)} (${fmt(disasterLevyCollectedTotal(D))} collected, removed from circulation)</div>}
+          {D.levy > 0 && disShortfall > 0 && (
+            <div className="text-red-700 font-semibold">
+              {disShortfallRegions.map((r) => `${r.region} Region failed to remit $${fmt(r.shortfall)} of its $${fmt(r.assessed)} assessment`).join("; ")}.
+            </div>
+          )}
+          {D.levy > 0 && disInKindRegions.length > 0 && (
+            <div>
+              <b>Paid in kind:</b>{" "}
+              {disInKindRegions.map((r) => `${r.region} — ${r.inKind} subsistence card${r.inKind === 1 ? "" : "s"}`).join(", ")}.
+            </div>
+          )}
           {D.closures && <div><b>Travel restrictions:</b> {D.closures}</div>}
           {D.rules && (
             <div className="mt-1">
@@ -135,17 +155,30 @@ export function MasmedReport({
           )}
           {E.winner && (
             <div className="mt-1">
-              <b>{E.winner}</b> has won control of the treasury. Levy collected: ${fmt(E.treasury.total)}.
+              <b>{E.winner}</b> has won control of the treasury. Levy assessed: ${fmt(E.treasury.totalAssessed)} ·
+              collected: ${fmt(E.treasury.total)}.
               <table className="w-full text-xs mt-1">
                 <thead>
-                  <tr><th className="text-left">Region</th><th className="text-left">Members</th><th className="text-left">Levy due</th></tr>
+                  <tr><th className="text-left">Region</th><th className="text-left">Members</th><th className="text-left">Assessed</th><th className="text-left">Collected</th></tr>
                 </thead>
                 <tbody>
                   {E.treasury.rows.map((x) => (
-                    <tr key={x.region}><td>{x.region}</td><td>{x.members}</td><td>${fmt(x.amount)}</td></tr>
+                    <tr key={x.region}><td>{x.region}</td><td>{x.members}</td><td>${fmt(x.assessed)}</td><td>${fmt(x.collected)}</td></tr>
                   ))}
                 </tbody>
               </table>
+              {elecShortfall > 0 && (
+                <div className="text-red-700 font-semibold mt-1">
+                  {elecShortfallRegions.map((r) => `${r.region} Region failed to remit $${fmt(r.shortfall)} of its $${fmt(r.assessed)} assessment`).join("; ")}.
+                  The winning heads receive less as a result.
+                </div>
+              )}
+              {elecInKindRegions.length > 0 && (
+                <div className="mt-1">
+                  <b>Paid in kind:</b>{" "}
+                  {elecInKindRegions.map((r) => `${r.region} — ${r.inKind} subsistence card${r.inKind === 1 ? "" : "s"}`).join(", ")}.
+                </div>
+              )}
               <div className="mt-1">
                 <b>Distribution — {E.winner === "SOP" ? "social programs for those in need" : "industry development"}:</b>{" "}
                 {E.treasury.recips.map((g) => `${g} head${headParen(g)}: $${fmt(E.treasury.share)}`).join(" · ")}.
