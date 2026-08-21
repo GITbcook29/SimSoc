@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useGame } from "../game-context";
-import { HEADREGION, HEADROLES, REGIONS, type HeadRole, type Region } from "@/lib/types";
+import { HEADREGION, HEADROLES, REGIONS, type Region } from "@/lib/types";
 import { downloadCSVTemplate, parseRosterCSV } from "@/lib/csv";
 import { LV } from "@/lib/simsoc-engine.js";
 import { isDead } from "@/lib/derive";
@@ -34,9 +34,6 @@ export default function SetupPage() {
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   if (loading) return <TableSkeleton rows={7} cols={5} />;
-
-  const roleOf = (id: string) =>
-    (HEADROLES as readonly HeadRole[]).find((r) => heads[r] === id) ?? "";
 
   const regionCounts = REGIONS.map(
     (r) => participants.filter((p) => p.region === r && !isDead(p, currentRound)).length
@@ -146,7 +143,6 @@ export default function SetupPage() {
                 <th className="py-1">#</th>
                 <th>Name</th>
                 <th>Region</th>
-                <th>Head of</th>
                 <th>Role</th>
                 <th>Real World Job</th>
                 <th></th>
@@ -173,7 +169,6 @@ export default function SetupPage() {
                       ))}
                     </select>
                   </td>
-                  <td>{roleOf(p.id) ? <b>{roleOf(p.id)}</b> : ""}</td>
                   <td>{p.role ?? ""}</td>
                   <td>{p.job || "—"}</td>
                   <td>
