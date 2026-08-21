@@ -232,6 +232,11 @@ export default function ResultsPage() {
                 <td>${fmt(R.retsinPay)}</td>
               </tr>
               <tr className="border-t">
+                <td>Passage purchases</td>
+                <td>{R.basinPassageCost != null ? (R.basinPassageCost ? `−$${fmt(R.basinPassageCost)}` : "$0") : "—"}</td>
+                <td>—</td>
+              </tr>
+              <tr className="border-t">
                 <td>Net assets (carried forward)</td>
                 <td>${fmt(R.basinNet)}</td>
                 <td>${fmt(R.retsinNet)}</td>

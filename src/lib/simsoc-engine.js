@@ -26,6 +26,12 @@ export const LV = {
   retsinWd: [12, 18, 24, 30, 36],     // RETSIN pay per correct word
 };
 
+// BASIN pays the passage purchase cost (LV.cost) per passage purchased, per the
+// Coordinator's Manual. Flip to false to revert to the old behavior (assets move
+// as start − withdrawn + payment, no purchase deduction) if a coordinator prefers
+// to handle purchase costs by hand.
+export const BASIN_CHARGE_FOR_PASSAGE_PURCHASES = true;
+
 export const REGIONS = ["Red", "Yellow", "Blue", "Green"];
 export const HEADROLES = ["BASIN", "RETSIN", "POP", "SOP", "EMPIN", "HUMSERV", "MASMED", "JUDCO"];
 
@@ -69,10 +75,43 @@ export function riotEffect(pct) {
   return 0;
 }
 
-export function basinPayment(passages, errors, level) {
+// Legacy single-total-errors model, used only as a fallback for rounds saved
+// before per-passage error entry existed (no `basinPassageErrors` array yet).
+export function basinPaymentLegacy(passages, errors, level) {
   if (passages <= 0) return 0;
-  if (errors > 6) return 0; // too many errors → no payment
+  if (errors >= 6) return 0; // 6 or more errors ⇒ no payment
   return passages * LV.basinPay[level - 1] - errors * LV.basinErr[level - 1];
+}
+
+// Each completed passage is scored independently: 6 or more errors on that
+// passage ⇒ no payment for it, otherwise pay − (errors × per-error penalty).
+export function basinPaymentPerPassage(errorsArr, level) {
+  const pay = LV.basinPay[level - 1];
+  const penalty = LV.basinErr[level - 1];
+  return errorsArr.reduce((sum, e) => sum + (e >= 6 ? 0 : pay - e * penalty), 0);
+}
+
+// How many passages BASIN purchased this round (purchased may exceed completed).
+export function basinPurchasedCount(I) {
+  return I.basinPurchased ?? I.basinPassages;
+}
+
+// How many completed passages are "acceptable" (fewer than 6 errors) — this
+// drives the +1 SL per acceptable solution, distinct from passages purchased.
+export function basinAcceptablePassages(I) {
+  if (I.basinPassageErrors && I.basinPassageErrors.length) {
+    return I.basinPassageErrors.filter((e) => e < 6).length;
+  }
+  return I.basinErrors < 6 ? I.basinPassages : 0;
+}
+
+// Picks the per-passage model when per-passage errors have been entered,
+// otherwise falls back to the legacy single-total model for older rounds.
+export function basinPaymentFromInputs(I, level) {
+  if (I.basinPassageErrors && I.basinPassageErrors.length) {
+    return basinPaymentPerPassage(I.basinPassageErrors, level);
+  }
+  return basinPaymentLegacy(I.basinPassages, I.basinErrors, level);
 }
 
 export function retsinPayment(anagramsIn, words, level) {
@@ -121,6 +160,8 @@ export function computeRound(ctx) {
   const I = withDefaults(inputs);
   const D = I.dis, E = I.elec;
   const { absentees, unemployed, deaths } = counts;
+  const basinPurchased = basinPurchasedCount(I);
+  const basinAcceptable = basinAcceptablePassages(I);
 
   // --- National Indicators ---
   let ind;
@@ -129,8 +170,8 @@ export function computeRound(ctx) {
   } else {
     const rEff = riotEffect(I.rioters / pop);
     const raw = {
-      FES: 0.9 * prev.FES + 0.4 * I.invRC - 2 * I.basinPassages + D.dFES + E.dFES,
-      SL:  0.9 * prev.SL + 0.1 * I.invRC + 0.1 * I.invWelfare + I.basinPassages + I.retsinAnagramsIn
+      FES: 0.9 * prev.FES + 0.4 * I.invRC - 2 * basinPurchased + D.dFES + E.dFES,
+      SL:  0.9 * prev.SL + 0.1 * I.invRC + 0.1 * I.invWelfare + basinAcceptable + I.retsinAnagramsIn
            - 2 * absentees - 3 * unemployed - 5 * deaths + D.dSL - D.subForfeit + E.dSL,
       SC:  0.9 * prev.SC + 0.2 * I.invWelfare - 3 * unemployed + rEff
            - 5 * I.guardPosts - 3 * I.arrests - 5 * deaths + D.dSC + E.dSC,
@@ -147,13 +188,14 @@ export function computeRound(ctx) {
   const mult = incomeMult(minInd);
 
   // --- Work payments ---
-  const basinPay = basinPayment(I.basinPassages, I.basinErrors, level);
+  const basinPay = basinPaymentFromInputs(I, level);
   const retsinPay = retsinPayment(I.retsinAnagramsIn, I.retsinWords, level);
 
   // --- Industry assets ---
   const basinStart = I.basinAssets ?? LV.assets[level - 1];
   const retsinStart = I.retsinAssets ?? LV.assets[level - 1];
-  const basinNet = basinStart - I.basinWithdrawn + basinPay;
+  const basinPassageCost = BASIN_CHARGE_FOR_PASSAGE_PURCHASES ? basinPurchased * LV.cost[level - 1] : 0;
+  const basinNet = basinStart - I.basinWithdrawn - basinPassageCost + basinPay;
   const retsinNet = retsinStart - I.retsinWithdrawn + retsinPay;
 
   // --- Next-session incomes (basic × multiplier) ---
@@ -175,7 +217,7 @@ export function computeRound(ctx) {
     level, pop, absentees, unemployed, deaths,
     rioters: I.rioters, guardPosts: I.guardPosts, arrests: I.arrests,
     indicators: ind, minInd, mult,
-    basinPay, retsinPay, basinNet, retsinNet,
+    basinPay, retsinPay, basinNet, retsinNet, basinPassageCost,
     basic, net, nextRound: round + 1,
     disaster: disasterActive(D) ? D : null,
     election: electionActive(E) ? { ...E, treasury: electionTreasury(E, regionLiving) } : null,
@@ -185,7 +227,7 @@ export function computeRound(ctx) {
 // ---- Input shape helpers -----------------------------------------------------
 export function defaultInputs() {
   return {
-    basinAssets: null, basinWithdrawn: 0, basinPassages: 0, basinErrors: 0,
+    basinAssets: null, basinWithdrawn: 0, basinPurchased: null, basinPassages: 0, basinErrors: 0, basinPassageErrors: [],
     retsinAssets: null, retsinWithdrawn: 0, retsinAnagramsIn: 0, retsinWords: 0,
     invRC: 0, invWelfare: 0,
     scPOP: 0, scSOP: 0, scEMPIN: 0, scHUMSERV: 0, scMASMED: 0,
@@ -219,7 +261,10 @@ if (typeof process !== "undefined" && process.argv[1] && process.argv[1].endsWit
   assert("sizeLevel(40)", sizeLevel(40), 2);
   assert("incomeMult(70)", incomeMult(70), 0.8);
   assert("incomeMult(68)", incomeMult(68), 0.7);
-  assert("basinPayment(2,3,1)", basinPayment(2, 3, 1), 88);
+  assert("basinPaymentLegacy(2,3,1)", basinPaymentLegacy(2, 3, 1), 88);
+  assert("basinPaymentPerPassage([1,6],1)", basinPaymentPerPassage([1, 6], 1), 46);
+  assert("basinAcceptablePassages([1,6])", basinAcceptablePassages({ basinPassageErrors: [1, 6] }), 1);
+  assert("basinPurchasedCount fallback", basinPurchasedCount({ basinPurchased: null, basinPassages: 2 }), 2);
 
   const s1 = computeRound({ round: 1, level: 1, pop: 28, prev: { FES: 100, SL: 100, SC: 100, PC: 100 },
     counts: { absentees: 0, unemployed: 0, deaths: 0 }, inputs: defaultInputs(), regionLiving: [7, 7, 7, 7] });
@@ -235,4 +280,22 @@ if (typeof process !== "undefined" && process.argv[1] && process.argv[1].endsWit
   const t = electionTreasury({ winner: "SOP", levyPerMember: 2, levyFlat: 10 }, [7, 7, 7, 7]);
   assert("SOP treasury total", t.total, 96);
   assert("SOP per-head share", t.share, 32);
+
+  // 3 purchased / 2 completed, errors [1, 6], level 1: one passage paid, one
+  // zeroed; FES −2×purchased; SL +1×acceptable (not +2); purchase cost deducted.
+  const basinIn = {
+    ...defaultInputs(),
+    basinAssets: 100,
+    basinWithdrawn: 0,
+    basinPurchased: 3,
+    basinPassages: 2,
+    basinPassageErrors: [1, 6],
+  };
+  const s3 = computeRound({ round: 2, level: 1, pop: 28, prev: { FES: 100, SL: 100, SC: 100, PC: 100 },
+    counts: { absentees: 0, unemployed: 0, deaths: 0 }, inputs: basinIn, regionLiving: [7, 7, 7, 7] });
+  assert("BASIN example payment", s3.basinPay, 46);
+  assert("BASIN example FES", s3.indicators.FES, round1(90 - 6));
+  assert("BASIN example SL", s3.indicators.SL, round1(90 + 1));
+  assert("BASIN example passage cost", s3.basinPassageCost, 120);
+  assert("BASIN example net", s3.basinNet, 100 - 0 - 120 + 46);
 }

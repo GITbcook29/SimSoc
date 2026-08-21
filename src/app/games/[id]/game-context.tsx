@@ -66,6 +66,7 @@ type GameContextValue = {
   setRegion: (id: string, region: Region) => Promise<void>;
   autoRegions: () => Promise<void>;
   setHead: (role: HeadRole, participantId: string | null) => Promise<void>;
+  reconcileHeadRoles: () => Promise<void>;
   setConfig: (patch: Partial<Game["config"]>) => Promise<void>;
   regenerateShareLink: () => Promise<void>;
   startNextSession: () => Promise<void>;
@@ -372,16 +373,71 @@ export function GameProvider({
     }
   }, [participants, supabase]);
 
+  // Keeps game_heads and participants.role in sync: reassigning a group head
+  // clears the outgoing head's role and stamps the incoming head's role, so the
+  // roster's Role column reflects the change immediately without a reload.
   const setHead = useCallback(
     async (role: HeadRole, participantId: string | null) => {
+      const outgoingId = heads[role] ?? null;
       setHeads((h) => ({ ...h, [role]: participantId }));
+      setParticipants((ps) =>
+        ps.map((p) => {
+          if (outgoingId && p.id === outgoingId && p.id !== participantId) return { ...p, role: null };
+          if (participantId && p.id === participantId) return { ...p, role };
+          return p;
+        })
+      );
+
+      if (outgoingId && outgoingId !== participantId) {
+        const { error } = await supabase.from("participants").update({ role: null }).eq("id", outgoingId);
+        if (error) toast("Error: " + error.message);
+      }
+      if (participantId) {
+        const { error } = await supabase.from("participants").update({ role }).eq("id", participantId);
+        if (error) toast("Error: " + error.message);
+      }
       const { error } = await supabase
         .from("game_heads")
         .upsert({ game_id: gameId, role, participant_id: participantId });
       if (error) toast("Error: " + error.message);
     },
-    [gameId, supabase, toast]
+    [gameId, heads, supabase, toast]
   );
+
+  // Idempotent data repair for games where game_heads and participants.role
+  // already drifted apart before this sync existed. game_heads is treated as
+  // authoritative. Safe to call repeatedly — a no-op once everything matches.
+  const reconcileHeadRoles = useCallback(async () => {
+    const headSet = new Set<string>(HEADROLES);
+    const correctRoleFor = new Map<string, HeadRole>();
+    for (const role of HEADROLES) {
+      const pid = heads[role];
+      if (pid) correctRoleFor.set(pid, role);
+    }
+    const changes: { id: string; name: string; from: string | null; to: HeadRole | null }[] = [];
+    for (const p of participants) {
+      const correct = correctRoleFor.get(p.id) ?? null;
+      const looksLikeHead = !!p.role && headSet.has(p.role);
+      if (correct !== null) {
+        if (p.role !== correct) changes.push({ id: p.id, name: p.name, from: p.role, to: correct });
+      } else if (looksLikeHead) {
+        changes.push({ id: p.id, name: p.name, from: p.role, to: null });
+      }
+    }
+    if (!changes.length) return;
+    console.log("[reconcileHeadRoles] correcting participants.role to match game_heads:", changes);
+    setParticipants((ps) =>
+      ps.map((p) => {
+        const c = changes.find((x) => x.id === p.id);
+        return c ? { ...p, role: c.to } : p;
+      })
+    );
+    for (const c of changes) {
+      const { error } = await supabase.from("participants").update({ role: c.to }).eq("id", c.id);
+      if (error) toast("Error reconciling " + c.name + ": " + error.message);
+    }
+    toast(`Reconciled ${changes.length} participant role(s) to match Group heads`);
+  }, [heads, participants, supabase, toast]);
 
   const setConfig = useCallback(
     async (patch: Partial<Game["config"]>) => {
@@ -467,7 +523,8 @@ export function GameProvider({
       const p = participants.find((x) => x.id === id);
       if (!p) return;
       const cur = p.sessions[String(currentRound)]?.status;
-      await patchParticipantSession(id, currentRound, { status: cur === code ? null : code });
+      if (cur === code) return; // clicking the already-selected status is a no-op
+      await patchParticipantSession(id, currentRound, { status: code });
     },
     [currentRound, participants, patchParticipantSession]
   );
@@ -710,6 +767,7 @@ export function GameProvider({
     setRegion,
     autoRegions,
     setHead,
+    reconcileHeadRoles,
     setConfig,
     regenerateShareLink,
     startNextSession,

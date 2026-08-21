@@ -75,8 +75,10 @@ export type ElectionInputs = {
 export type RoundInputs = {
   basinAssets: number | null;
   basinWithdrawn: number;
+  basinPurchased: number | null;
   basinPassages: number;
   basinErrors: number;
+  basinPassageErrors: number[];
   retsinAssets: number | null;
   retsinWithdrawn: number;
   retsinAnagramsIn: number;
@@ -115,6 +117,7 @@ export type RoundResults = {
   retsinPay: number;
   basinNet: number;
   retsinNet: number;
+  basinPassageCost: number;
   basic: Record<string, number>;
   net: Record<string, number>;
   nextRound: number;

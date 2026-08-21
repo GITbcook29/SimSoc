@@ -1,12 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGame } from "../game-context";
 import { REGIONS, type AttendanceCode } from "@/lib/types";
-import { basinPayment, LV } from "@/lib/simsoc-engine.js";
+import { basinPaymentFromInputs, basinPurchasedCount, LV } from "@/lib/simsoc-engine.js";
 import { countStatus, fmt, isDead, newDeaths } from "@/lib/derive";
 import { TableSkeleton } from "@/components/Skeleton";
 import { ReleaseReportBanner } from "@/components/ReleaseReportBanner";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const STATUS_CODES: AttendanceCode[] = ["P", "A", "E", "D"];
 const STATUS_LABEL: Record<AttendanceCode, string> = { P: "P", A: "A", E: "U", D: "D" };
@@ -29,10 +31,11 @@ export default function SessionPage() {
     setStatus,
     setFlag,
     setInput,
-    tally,
     setConfig,
     closeSession,
   } = useGame();
+
+  const [closeConfirm, setCloseConfirm] = useState<{ count: number; names: string[] } | null>(null);
 
   if (loading) return <TableSkeleton rows={8} cols={7} />;
 
@@ -55,22 +58,45 @@ export default function SessionPage() {
     if (prevNS && st?.ns && st.status !== "D") nsWarn.push(p.name);
   }
 
-  const bp = basinPayment(I.basinPassages, I.basinErrors, level);
+  const unmarkedParticipants = participants.filter(
+    (p) => !isDead(p, currentRound - 1) && !p.sessions[String(currentRound)]?.status
+  );
+
+  const basinPurchased = basinPurchasedCount(I);
+  const passageErrors = Array.from({ length: I.basinPassages }, (_, i) => I.basinPassageErrors?.[i] ?? 0);
+  const bp = basinPaymentFromInputs(I, level);
   const rw = Math.min(I.retsinWords, I.retsinAnagramsIn ? 5 * I.retsinAnagramsIn : I.retsinWords);
+
+  async function commitPassagesCompleted(v: number) {
+    const n = Math.max(0, Math.round(v));
+    const cur = I.basinPassageErrors && I.basinPassageErrors.length ? I.basinPassageErrors : Array(I.basinPassages).fill(0);
+    const next = cur.slice(0, n);
+    while (next.length < n) next.push(0);
+    await setInput("basinPassages", n);
+    await setInput("basinPassageErrors", next);
+  }
+
+  async function commitPassageError(i: number, v: number) {
+    const cur = I.basinPassageErrors && I.basinPassageErrors.length ? [...I.basinPassageErrors] : Array(I.basinPassages).fill(0);
+    while (cur.length <= i) cur.push(0);
+    cur[i] = Math.max(0, Math.round(v));
+    await setInput("basinPassageErrors", cur);
+  }
 
   async function handleClose() {
     const res = await closeSession();
     if (!res.ok && res.needsConfirm) {
-      const proceed = confirm(
-        `${res.needsConfirm} participant(s) have no status for this session — they will be treated as Present. Continue?`
-      );
-      if (!proceed) return;
-      const res2 = await closeSession({ force: true });
-      if (res2.collapsed) alert("⚠ An indicator has gone below 0 — per the rules the SOCIETY COLLAPSES. Results recorded; see the Results tab.");
-      router.push(`/games/${game.id}/results`);
+      setCloseConfirm({ count: res.needsConfirm, names: unmarkedParticipants.slice(0, 10).map((p) => p.name) });
       return;
     }
     if (res.collapsed) alert("⚠ An indicator has gone below 0 — per the rules the SOCIETY COLLAPSES. Results recorded; see the Results tab.");
+    router.push(`/games/${game.id}/results`);
+  }
+
+  async function confirmCloseAnyway() {
+    setCloseConfirm(null);
+    const res2 = await closeSession({ force: true });
+    if (res2.collapsed) alert("⚠ An indicator has gone below 0 — per the rules the SOCIETY COLLAPSES. Results recorded; see the Results tab.");
     router.push(`/games/${game.id}/results`);
   }
 
@@ -120,8 +146,12 @@ export default function SessionPage() {
                       </tr>
                     );
                   }
+                  const unmarked = !st.status;
                   return (
-                    <tr key={p.id} className="border-t">
+                    <tr
+                      key={p.id}
+                      className={`border-t ${unmarked ? "border-l-2 border-l-amber-400 bg-amber-500/5" : ""}`}
+                    >
                       <td className="py-1">{p.name}</td>
                       <td>{p.region}</td>
                       <td>
@@ -160,24 +190,79 @@ export default function SessionPage() {
             <TallyRow label="Absentees (from roster)" value={countStatus(participants, currentRound, "A")} readOnly />
             <TallyRow label="Unemployed (from roster)" value={countStatus(participants, currentRound, "E")} readOnly />
             <TallyRow label="Deaths this session" value={newDeaths(participants, currentRound)} readOnly />
-            <TallyRow label="Rioters" value={I.rioters} onDelta={(d) => tally("rioters", d)} />
-            <TallyRow label="Guard posts" value={I.guardPosts} onDelta={(d) => tally("guardPosts", d)} />
-            <TallyRow label="Arrests" value={I.arrests} onDelta={(d) => tally("arrests", d)} />
+            <TallyRow label="Unmarked" value={unmarkedParticipants.length} readOnly warn />
+            <NumRow
+              label="Rioters"
+              value={I.rioters}
+              min={0}
+              step={1}
+              onCommit={(v) => setInput("rioters", Math.max(0, Math.round(v)))}
+            />
+            <NumRow
+              label="Guard posts"
+              value={I.guardPosts}
+              min={0}
+              step={1}
+              onCommit={(v) => setInput("guardPosts", Math.max(0, Math.round(v)))}
+            />
+            <NumRow
+              label="Arrests"
+              value={I.arrests}
+              min={0}
+              step={1}
+              onCommit={(v) => setInput("arrests", Math.max(0, Math.round(v)))}
+            />
             <h3 className="text-xs text-neutral-500 mt-3 mb-1">
               Goal declarations (PC: +0.25 per positive, −1 per negative)
             </h3>
-            <TallyRow label="Positive" value={I.goalsPos} onDelta={(d) => tally("goalsPos", d)} />
-            <TallyRow label="Negative" value={I.goalsNeg} onDelta={(d) => tally("goalsNeg", d)} />
+            <NumRow
+              label="Positive"
+              ariaLabel="Positive goal declarations"
+              value={I.goalsPos}
+              min={0}
+              step={1}
+              onCommit={(v) => setInput("goalsPos", Math.max(0, Math.round(v)))}
+            />
+            <NumRow
+              label="Negative"
+              ariaLabel="Negative goal declarations"
+              value={I.goalsNeg}
+              min={0}
+              step={1}
+              onCommit={(v) => setInput("goalsNeg", Math.max(0, Math.round(v)))}
+            />
           </div>
 
           <div className="border rounded-lg p-4">
             <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-2">BASIN</h2>
             <NumRow label="Assets (start of round)" value={I.basinAssets ?? LV.assets[level - 1]} onCommit={(v) => setInput("basinAssets", v)} />
             <NumRow label="Assets withdrawn" value={I.basinWithdrawn} onCommit={(v) => setInput("basinWithdrawn", v)} />
-            <NumRow label="Passages completed" value={I.basinPassages} onCommit={(v) => setInput("basinPassages", v)} />
-            <NumRow label="Total errors" value={I.basinErrors} onCommit={(v) => setInput("basinErrors", v)} />
+            <NumRow
+              label="Passages purchased"
+              value={basinPurchased}
+              min={0}
+              max={5}
+              step={1}
+              onCommit={(v) => setInput("basinPurchased", Math.max(0, Math.min(5, Math.round(v))))}
+            />
+            <NumRow label="Passages completed" value={I.basinPassages} min={0} step={1} onCommit={commitPassagesCompleted} />
+            {I.basinPassages > basinPurchased && (
+              <p className="text-xs text-amber-500 mt-1">⚠ Passages completed exceeds passages purchased.</p>
+            )}
+            {passageErrors.map((e, i) => (
+              <NumRow
+                key={i}
+                label={`Passage ${i + 1} errors`}
+                value={e}
+                min={0}
+                step={1}
+                onCommit={(v) => commitPassageError(i, v)}
+              />
+            ))}
             <p className="text-xs text-neutral-500 mt-1">
-              {I.basinErrors > 6 && <span className="text-red-500">More than 6 errors ⇒ no payment. </span>}
+              {passageErrors.some((e) => e >= 6) && (
+                <span className="text-red-500">6 or more errors ⇒ no payment. </span>
+              )}
               Payment due BASIN: <b>${fmt(bp)}</b> (level {level}: {LV.basinPay[level - 1]}/passage −{" "}
               {LV.basinErr[level - 1]}/error).
             </p>
@@ -219,6 +304,27 @@ export default function SessionPage() {
           Computes National Indicators, income multiplier, and next-session payments; archives this round.
         </span>
       </div>
+
+      <ConfirmDialog
+        open={!!closeConfirm}
+        title="Unmarked participants"
+        confirmLabel="Close anyway"
+        cancelLabel="Go back"
+        onConfirm={confirmCloseAnyway}
+        onCancel={() => setCloseConfirm(null)}
+        message={
+          closeConfirm && (
+            <>
+              <b>{closeConfirm.count}</b> participant{closeConfirm.count === 1 ? "" : "s"} have no status for Session{" "}
+              {currentRound}: {closeConfirm.names.join(", ")}
+              {closeConfirm.count > closeConfirm.names.length
+                ? ` (+${closeConfirm.count - closeConfirm.names.length} more)`
+                : ""}
+              . They will be excluded from all indicator penalties. Close anyway?
+            </>
+          )
+        }
+      />
     </div>
   );
 }
@@ -243,21 +349,24 @@ function TallyRow({
   value,
   onDelta,
   readOnly,
+  warn,
 }: {
   label: string;
   value: number;
   onDelta?: (d: number) => void;
   readOnly?: boolean;
+  warn?: boolean;
 }) {
+  const isWarn = !!warn && value > 0;
   return (
     <div className="flex items-center gap-2 py-1 text-sm">
-      <span className="flex-1 text-neutral-500 text-xs">{label}</span>
+      <span className={`flex-1 text-xs ${isWarn ? "text-amber-400" : "text-neutral-500"}`}>{label}</span>
       {!readOnly && onDelta && (
         <button onClick={() => onDelta(-1)} className="w-6 h-6 border rounded">
           −
         </button>
       )}
-      <span className="w-8 text-center font-bold">{value || 0}</span>
+      <span className={`w-8 text-center font-bold ${isWarn ? "text-amber-400" : ""}`}>{value || 0}</span>
       {!readOnly && onDelta && (
         <button onClick={() => onDelta(1)} className="w-6 h-6 border rounded">
           +
@@ -269,12 +378,20 @@ function TallyRow({
 
 function NumRow({
   label,
+  ariaLabel,
   value,
   onCommit,
+  min,
+  max,
+  step,
 }: {
   label: string;
+  ariaLabel?: string;
   value: number;
   onCommit: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
 }) {
   return (
     <div className="flex items-center gap-2 py-1 text-sm">
@@ -283,6 +400,10 @@ function NumRow({
         type="number"
         defaultValue={value}
         key={value}
+        min={min}
+        max={max}
+        step={step}
+        aria-label={ariaLabel ?? label}
         onBlur={(e) => onCommit(e.target.value === "" ? 0 : +e.target.value)}
         className="w-20 border rounded px-2 py-1 text-right text-sm"
       />

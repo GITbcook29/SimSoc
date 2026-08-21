@@ -17,7 +17,8 @@ export default function CheatSheetPage() {
             <tr className="border-t"><td>Natural decline</td><td colSpan={4}>Each indicator starts at 90% of previous value</td></tr>
             <tr className="border-t"><td>R&amp;C investment ($)</td><td>+40%</td><td>+10%</td><td>—</td><td>—</td></tr>
             <tr className="border-t"><td>Welfare investment ($)</td><td>—</td><td>+10%</td><td>+20%</td><td>+20%</td></tr>
-            <tr className="border-t"><td>Each BASIN passage bought</td><td>−2</td><td>+1</td><td>—</td><td>—</td></tr>
+            <tr className="border-t"><td>Each BASIN passage purchased</td><td>−2</td><td>—</td><td>—</td><td>—</td></tr>
+            <tr className="border-t"><td>Each acceptable solution (BASIN passage, &lt;6 errors)</td><td>—</td><td>+1</td><td>—</td><td>—</td></tr>
             <tr className="border-t"><td>Each RETSIN anagram bought</td><td>—</td><td>+1</td><td>—</td><td>−1</td></tr>
             <tr className="border-t"><td>Each absentee</td><td>—</td><td>−2</td><td>—</td><td>−2</td></tr>
             <tr className="border-t"><td>Each unemployed</td><td>—</td><td>−3</td><td>−3</td><td>−1</td></tr>
@@ -76,7 +77,9 @@ export default function CheatSheetPage() {
         </table>
         <h3 className="text-neutral-500 mt-3 mb-1">Work payments</h3>
         <p className="text-neutral-500">
-          BASIN passage: level-1 pay 50 − 4/error (scales ×1.5/2/2.5/3 by level); more than 6 errors ⇒ no payment.
+          BASIN passage: level-1 pay 50 − 4/error, scored per passage (scales ×1.5/2/2.5/3 by level); 6 or more
+          errors on a passage ⇒ no payment for it. BASIN pays the passage purchase cost (level table) per passage
+          purchased, whether or not it&apos;s completed.
           <br />
           RETSIN anagram: 12 per correct word at level 1 (scales likewise); max 5 words per anagram.
         </p>

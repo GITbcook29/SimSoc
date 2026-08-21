@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGame } from "../game-context";
-import { HEADREGION, HEADROLES, REGIONS, type Region } from "@/lib/types";
+import { HEADREGION, HEADROLES, REGIONS, type HeadRole, type Region } from "@/lib/types";
 import { downloadCSVTemplate, parseRosterCSV } from "@/lib/csv";
 import { LV } from "@/lib/simsoc-engine.js";
 import { isDead } from "@/lib/derive";
@@ -23,6 +23,7 @@ export default function SetupPage() {
     setRegion,
     autoRegions,
     setHead,
+    reconcileHeadRoles,
     setConfig,
     toast,
   } = useGame();
@@ -32,6 +33,13 @@ export default function SetupPage() {
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const reconciledRef = useRef(false);
+
+  useEffect(() => {
+    if (loading || reconciledRef.current) return;
+    reconciledRef.current = true;
+    reconcileHeadRoles();
+  }, [loading, reconcileHeadRoles]);
 
   if (loading) return <TableSkeleton rows={7} cols={5} />;
 
@@ -63,6 +71,17 @@ export default function SetupPage() {
     }
     const { added, headsSet } = await addParticipantsBulk(rows);
     toast(`${added} participant(s) imported${headsSet.length ? " · heads auto-assigned: " + headsSet.join(", ") : ""}`);
+  }
+
+  async function handleSetHead(role: HeadRole, participantId: string | null) {
+    if (participantId) {
+      const dupRole = HEADROLES.find((r) => r !== role && heads[r] === participantId);
+      if (dupRole) {
+        const name = participants.find((p) => p.id === participantId)?.name ?? "This participant";
+        toast(`${name} already leads ${dupRole} — assigning to ${role} too (allowed by the manual).`);
+      }
+    }
+    await setHead(role, participantId || null);
   }
 
   const L = level - 1;
@@ -247,26 +266,41 @@ export default function SetupPage() {
             </tr>
           </thead>
           <tbody>
-            {HEADROLES.map((role) => (
-              <tr key={role} className="border-t">
-                <td>{role}</td>
-                <td>{HEADREGION[role]}</td>
-                <td>
-                  <select
-                    value={heads[role] ?? ""}
-                    onChange={(e) => setHead(role, e.target.value || null)}
-                    className="border rounded px-1 py-0.5"
-                  >
-                    <option value="">—</option>
-                    {participants.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
+            {HEADROLES.map((role) => {
+              const headId = heads[role] ?? "";
+              const headParticipant = participants.find((p) => p.id === headId);
+              const headDead = !!headParticipant && isDead(headParticipant, currentRound);
+              return (
+                <tr key={role} className="border-t">
+                  <td>{role}</td>
+                  <td>{HEADREGION[role]}</td>
+                  <td>
+                    <select
+                      value={headId}
+                      onChange={(e) => handleSetHead(role, e.target.value || null)}
+                      className="border rounded px-1 py-0.5"
+                    >
+                      <option value="">—</option>
+                      {headDead && headParticipant && (
+                        <option value={headParticipant.id} disabled>
+                          {headParticipant.name} (deceased)
+                        </option>
+                      )}
+                      {participants
+                        .filter((p) => !isDead(p, currentRound))
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                    </select>
+                    {headDead && (
+                      <div className="text-amber-400 text-[10px] mt-0.5">⚠ Head deceased — reassign</div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
