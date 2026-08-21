@@ -148,6 +148,7 @@ export default function SetupPage() {
                 <th>Region</th>
                 <th>Head of</th>
                 <th>Role</th>
+                <th>Real World Job</th>
                 <th></th>
               </tr>
             </thead>
@@ -174,6 +175,7 @@ export default function SetupPage() {
                   </td>
                   <td>{roleOf(p.id) ? <b>{roleOf(p.id)}</b> : ""}</td>
                   <td>{p.role ?? ""}</td>
+                  <td>{p.job || "—"}</td>
                   <td>
                     <button onClick={() => deleteParticipant(p.id)} className="text-neutral-400 hover:text-red-500">
                       ✕
