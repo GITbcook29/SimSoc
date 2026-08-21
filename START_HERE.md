@@ -26,12 +26,12 @@ Supabase + Vercel. Owner/user (**Bcook**) is non-technical for this build.
 - **Code:** `/Users/macbookprohomefolder/Desktop/AI/Claude/SimSoc/simsoc-web`
 - **GitHub:** github.com/GITbcook29/SimSoc — branch `main` (Vercel deploys from it)
 - **Supabase:** `ydxbevynlqlubafnknns.supabase.co` — anon/publishable key in `.env.local` (gitignored). **No service-role key available.**
-- **Local dev:** launch config name `simsoc-web`, **port 5174** (in the repo-root `.claude/launch.json`; it also has an unrelated `stirling-cre-l10-dev` entry — leave it). Start with the launch config, or `npx next dev -p 5174`.
+- **Local dev:** launch config name `simsoc-web`, **port 5174**. It lives in the *parent* workspace config `/Users/macbookprohomefolder/Desktop/AI/Claude/.claude/launch.json` (alongside unrelated `stirling-cre-l10-dev` / `ghl-api` entries — leave those). There is deliberately **no `.claude/launch.json` inside this repo**: one briefly existed claiming port 3000 under the same config name and was never used, so it was removed to avoid two entries that disagree. Start with the launch config, or `npx next dev -p 5174`.
 - **Next 16 (App Router, Turbopack) + React 19 + Tailwind v4 + TypeScript.** Note `AGENTS.md`: this is a modified Next 16 — mirror existing patterns in the repo.
 
 ## Recent commits (on `main`, deployed)
-- `<preset-fix>` — Presets write atomically (fixes the disaster/election levy-drop race)
-- `<docs>` — Track the handoff docs in git
+- `b41c291` — Presets write atomically (fixes the disaster/election levy-drop race)
+- `6d7abaa` — Track the handoff docs in git
 - `043f812` — Session-1 auto-seeded simbucks; roster defaults to Present
 - `b89d685` — Money in circulation, levies assessed-vs-collected, collapse-warning rework
 - `5274eee` — Five data-integrity fixes (attendance, BASIN passage model, head/role sync)
@@ -45,7 +45,7 @@ pushed and deployed.
 
 ---
 
-## Features shipped 2026-08-21 (commits `ed5c212` → `b89d685`)
+## Features shipped 2026-08-21 (commits `ed5c212` → `b41c291`)
 
 ### Roster
 - **Real World Job** column on the Setup roster (`participants.job`, already in the DB,
