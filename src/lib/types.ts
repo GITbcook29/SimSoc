@@ -92,8 +92,11 @@ export type CirculationInjection = { label: string; amount: number };
 
 export type CirculationInputs = {
   // Coordinator-counted cash currently held in each region — a snapshot,
-  // re-entered/updated as often as they physically check.
-  regionCash: RegionAmounts;
+  // re-entered/updated as often as they physically check. A region absent from
+  // this map has not been counted and falls back to its derived holding (the
+  // treasuries of the group heads living there), which is what lets Session 1
+  // open with the manual's starting money without any data entry.
+  regionCash: Partial<RegionAmounts>;
   // Coordinator-counted override per group treasury. A group absent from
   // this map falls back to the derived (opening + income − spending) value.
   groupCash: Partial<Record<HeadRole, number>>;
@@ -179,12 +182,19 @@ export type TreasuryResult = {
 export type CirculationSnapshot = {
   level: number;
   round: number;
+  /** Effective per-region holdings: the counted override, else the derived value. */
   regionCash: RegionAmounts;
+  regionDerived: RegionAmounts;
+  regionCashOverride: Partial<RegionAmounts>;
   groupDerived: Record<HeadRole, number>;
   groupCashOverride: Partial<Record<HeadRole, number>>;
   groupTreasury: Record<HeadRole, number>;
+  /** Authoritative money supply — regions hold everyone's cash, heads included. */
   totalRegion: number;
+  /** The slice of `totalRegion` held by the eight group heads. Never added to it. */
   totalGroup: number;
+  /** totalRegion − totalGroup: cash that has reached ordinary members. */
+  totalMembers: number;
   total: number;
   issuedTotal: number;
   removedTotal: number;

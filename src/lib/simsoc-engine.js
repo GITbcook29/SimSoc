@@ -265,6 +265,29 @@ export function computeRound(ctx) {
   };
 }
 
+// Session-1 starting payments to each group head, from the Coordinator's Manual
+// size-level table. This is the entire money supply at the start of the game.
+export function startingPayments(level) {
+  return {
+    BASIN: LV.br[level - 1],
+    RETSIN: LV.br[level - 1],
+    POP: LV.pop[level - 1],
+    SOP: LV.pop[level - 1],
+    EMPIN: LV.other[level - 1],
+    HUMSERV: LV.other[level - 1],
+    MASMED: LV.other[level - 1],
+    JUDCO: round1(0.75 * LV.pop[level - 1]),
+  };
+}
+
+// The manual gives starting income to group HEADS only — ordinary members begin
+// with nothing and must be employed or given money. Red therefore starts at $0:
+// that is the deprived region's structural disadvantage, not a missing figure.
+// If a coordinator runs a variant that hands every participant a starting
+// allotment, set this to that per-person amount and it flows into each region's
+// opening cash and into the issued total.
+export const MEMBER_STARTING_ALLOWANCE = 0;
+
 // ---- Money in circulation -----------------------------------------------------
 // Bank = infinite source/sink, untracked. Group treasuries + region holdings are
 // what's "in circulation". Election levies are collected-from-and-redistributed-to
@@ -318,19 +341,11 @@ export function roundFlow(round, prevRound, level) {
  *
  * `rounds` is a { [round_no]: Round } map (as held in GameProvider state).
  */
-export function computeCirculation({ rounds, currentRound, level }) {
-  const startingPayments = {
-    BASIN: LV.br[level - 1],
-    RETSIN: LV.br[level - 1],
-    POP: LV.pop[level - 1],
-    SOP: LV.pop[level - 1],
-    EMPIN: LV.other[level - 1],
-    HUMSERV: LV.other[level - 1],
-    MASMED: LV.other[level - 1],
-    JUDCO: round1(0.75 * LV.pop[level - 1]),
-  };
-  const groupDerived = { ...startingPayments };
-  let issuedTotal = Object.values(startingPayments).reduce((a, b) => a + b, 0);
+export function computeCirculation({ rounds, currentRound, level, regionLiving = [0, 0, 0, 0] }) {
+  const opening = startingPayments(level);
+  const groupDerived = { ...opening };
+  const memberOpening = regionLiving.reduce((a, n) => a + (n || 0), 0) * MEMBER_STARTING_ALLOWANCE;
+  let issuedTotal = Object.values(opening).reduce((a, b) => a + b, 0) + memberOpening;
   let removedTotal = 0;
 
   const roundNos = Object.keys(rounds)
@@ -362,25 +377,43 @@ export function computeCirculation({ rounds, currentRound, level }) {
   }
 
   const curInputs = withDefaults(rounds[currentRound]?.inputs || {});
-  const regionCash = curInputs.circulation.regionCash;
+  const regionCashOverride = curInputs.circulation.regionCash || {};
   const groupCashOverride = curInputs.circulation.groupCash || {};
   const groupTreasury = {};
   for (const g of HEADROLES) groupTreasury[g] = groupCashOverride[g] != null ? groupCashOverride[g] : groupDerived[g];
 
-  const totalRegion = Object.values(regionCash).reduce((a, b) => a + b, 0);
-  const totalGroup = Object.values(groupTreasury).reduce((a, b) => a + b, 0);
-  const total = totalRegion + totalGroup;
-  const flowTotal = issuedTotal - removedTotal;
+  // A region holds the money of everyone living in it — including the group
+  // heads placed there by the manual (Red has none, so it opens at $0). Regions
+  // are therefore the authoritative total; group treasuries are a cross-cutting
+  // view of the slice the heads hold, NOT a second pot to add on top. Adding
+  // both would double-count the entire supply.
+  const regionDerived = { Red: 0, Yellow: 0, Blue: 0, Green: 0 };
+  for (const g of HEADROLES) regionDerived[HEADREGION[g]] += groupTreasury[g];
+  REGIONS.forEach((r, i) => {
+    regionDerived[r] = round1(regionDerived[r] + (regionLiving[i] || 0) * MEMBER_STARTING_ALLOWANCE);
+  });
+
+  const regionCash = {};
+  for (const r of REGIONS) regionCash[r] = regionCashOverride[r] != null ? regionCashOverride[r] : regionDerived[r];
+
+  const totalRegion = round1(Object.values(regionCash).reduce((a, b) => a + b, 0));
+  const totalGroup = round1(Object.values(groupTreasury).reduce((a, b) => a + b, 0));
+  const total = totalRegion;
+  const totalMembers = round1(total - totalGroup);
+  const flowTotal = round1(issuedTotal - removedTotal);
 
   return {
     level,
     round: currentRound,
     regionCash,
+    regionDerived,
+    regionCashOverride,
     groupDerived,
     groupCashOverride,
     groupTreasury,
     totalRegion,
     totalGroup,
+    totalMembers,
     total,
     issuedTotal,
     removedTotal,
@@ -413,7 +446,10 @@ export function defaultElection() {
 }
 export function defaultCirculation() {
   return {
-    regionCash: { Red: 0, Yellow: 0, Blue: 0, Green: 0 },
+    // Left empty rather than zeroed so "not yet counted" stays distinguishable
+    // from a counted zero: an absent region falls back to its derived opening
+    // cash (the heads living there), which is what makes Session 1 self-seed.
+    regionCash: {},
     groupCash: {},
     bankFees: { ptc: 0, lux: 0, moving: 0, transfer: 0 },
     removals: [],
@@ -496,7 +532,20 @@ if (typeof process !== "undefined" && process.argv[1] && process.argv[1].endsWit
   const expectedStart = 10 + 10 + 40 + 40 + 30 + 30 + 30 + 30; // BASIN RETSIN POP SOP EMPIN HUMSERV MASMED JUDCO(0.75*40)
   assert("circulation round1 issuedTotal = starting payments", c1.issuedTotal, expectedStart);
   assert("circulation round1 removedTotal", c1.removedTotal, 0);
-  assert("circulation region+group == total", c1.totalRegion + c1.totalGroup, c1.total);
+
+  // Session 1 self-seeds: with nothing counted, the money supply is exactly the
+  // manual's starting payments, and the region view and group view are two
+  // lenses on the SAME $220 — never added together (that would double-count).
+  assert("session 1 total = manual starting payments", c1.total, 220);
+  assert("session 1 region view sums to the same total", c1.totalRegion, c1.totalGroup);
+  assert("session 1 no member money yet", c1.totalMembers, 0);
+  assert("session 1 variance is zero", c1.variance, 0);
+  // Heads are placed Green: BASIN+JUDCO+POP, Yellow: RETSIN+SOP+HUMSERV,
+  // Blue: MASMED+EMPIN, Red: none.
+  assert("Green opens at 10+30+40", c1.regionCash.Green, 80);
+  assert("Yellow opens at 10+40+30", c1.regionCash.Yellow, 80);
+  assert("Blue opens at 30+30", c1.regionCash.Blue, 60);
+  assert("Red opens at 0 (no group heads)", c1.regionCash.Red, 0);
 
   // Close round 1 with a real payments table, open round 2, and verify:
   // (a) round 2's issued jumps by exactly the round-1 payments total,

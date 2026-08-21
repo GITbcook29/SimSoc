@@ -78,7 +78,7 @@ type GameContextValue = {
   setElecInput: (key: string, value: string | number | boolean | Partial<Record<Region, number>>) => Promise<void>;
   setCirculationInput: (patch: Partial<RoundInputs["circulation"]>) => Promise<void>;
   tally: (key: "rioters" | "guardPosts" | "arrests" | "goalsPos" | "goalsNeg", d: number) => Promise<void>;
-  closeSession: (opts?: { force?: boolean }) => Promise<{ ok: boolean; needsConfirm?: number; collapsed?: boolean }>;
+  closeSession: () => Promise<{ ok: boolean; collapsed?: boolean }>;
   reopenRound: (roundNo: number) => Promise<void>;
   addRule: (text: string) => Promise<void>;
   updateRule: (id: string, text: string) => Promise<void>;
@@ -524,7 +524,9 @@ export function GameProvider({
     async (id: string, code: "P" | "A" | "E" | "D") => {
       const p = participants.find((x) => x.id === id);
       if (!p) return;
-      const cur = p.sessions[String(currentRound)]?.status;
+      // An unset status displays and scores as Present, so treat it as "P" here
+      // too — re-clicking the highlighted P on an untouched row is a no-op.
+      const cur = p.sessions[String(currentRound)]?.status ?? "P";
       if (cur === code) return; // clicking the already-selected status is a no-op
       await patchParticipantSession(id, currentRound, { status: code });
     },
@@ -621,16 +623,17 @@ export function GameProvider({
 
   // ---- close / reopen ----
   const closeSession = useCallback(
-    async (opts?: { force?: boolean }) => {
+    async () => {
       const r = currentRound;
       if (participants.length === 0) return { ok: false as const };
 
+      // Present is the roster's default — the coordinator marks only the
+      // exceptions — so an untouched row is Present, not an omission. Record it
+      // explicitly on close so history and the player view show a real status
+      // rather than a blank.
       const unmarked = participants
         .filter((p) => !isDead(p, r - 1))
         .filter((p) => !p.sessions[String(r)]?.status);
-      if (unmarked.length && !opts?.force) {
-        return { ok: false as const, needsConfirm: unmarked.length };
-      }
       for (const p of unmarked) {
         await patchParticipantSession(p.id, r, { status: "P" });
       }

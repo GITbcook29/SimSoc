@@ -1,7 +1,7 @@
 "use client";
 
 import { useGame } from "../game-context";
-import { collapseTier, fmt } from "@/lib/derive";
+import { collapseTier, fmt, livingByRegion } from "@/lib/derive";
 import { computeCirculation, roundFlow } from "@/lib/simsoc-engine.js";
 import type { Indicators } from "@/lib/types";
 import { SEVERITY_BANNER, SEVERITY_TILE, SEVERITY_TEXT, TYPE, type Severity } from "@/lib/tokens";
@@ -61,8 +61,10 @@ export default function ResultsPage() {
   const prev = prevIndicators(r);
   const tier = collapseTier(R.indicators, prev);
 
-  const circNow = computeCirculation({ rounds, currentRound: r, level: R.level });
-  const circPrev = r > 1 ? computeCirculation({ rounds, currentRound: r - 1, level: R.level }) : null;
+  const regionLiving = livingByRegion(participants, r);
+  const circNow = computeCirculation({ rounds, currentRound: r, level: R.level, regionLiving });
+  const circPrev =
+    r > 1 ? computeCirculation({ rounds, currentRound: r - 1, level: R.level, regionLiving }) : null;
   const circDelta = Math.round((circNow.total - (circPrev?.total ?? 0)) * 10) / 10;
   const { issued: roundIssued, removed: roundRemoved } = roundFlow(round, rounds[r - 1], R.level);
   const headName = (g: string) => {

@@ -46,10 +46,14 @@ export function disasterLevyRows(
 ): { region: Region; assessed: number; collected: number; shortfall: number; inKind: number }[];
 export function disasterLevyCollectedTotal(dis: Partial<DisasterInputs>): number;
 export function roundFlow(round: Round, prevRound: Round | undefined, level: number): RoundFlow;
+export const MEMBER_STARTING_ALLOWANCE: number;
+export function startingPayments(level: number): Record<HeadRole, number>;
 export function computeCirculation(ctx: {
   rounds: Record<number, Round>;
   currentRound: number;
   level: number;
+  /** [Red, Yellow, Blue, Green] living counts — only needed if MEMBER_STARTING_ALLOWANCE is non-zero. */
+  regionLiving?: number[];
 }): CirculationSnapshot;
 
 export function computeRound(ctx: {

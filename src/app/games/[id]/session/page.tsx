@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGame } from "../game-context";
 import { HEADROLES, REGIONS, type AttendanceCode, type HeadRole, type Region } from "@/lib/types";
 import { basinPaymentFromInputs, basinPurchasedCount, computeCirculation, defaultCirculation, BANK_FEES, LV } from "@/lib/simsoc-engine.js";
-import { countStatus, fmt, isDead, newDeaths } from "@/lib/derive";
+import { countStatus, fmt, isDead, livingByRegion, newDeaths } from "@/lib/derive";
 import { TableSkeleton } from "@/components/Skeleton";
 import { ReleaseReportBanner } from "@/components/ReleaseReportBanner";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const STATUS_CODES: AttendanceCode[] = ["P", "A", "E", "D"];
 const STATUS_LABEL: Record<AttendanceCode, string> = { P: "P", A: "A", E: "U", D: "D" };
@@ -36,8 +34,6 @@ export default function SessionPage() {
     closeSession,
   } = useGame();
 
-  const [closeConfirm, setCloseConfirm] = useState<{ count: number; names: string[] } | null>(null);
-
   if (loading) return <TableSkeleton rows={8} cols={7} />;
 
   const round = rounds[currentRound];
@@ -59,10 +55,6 @@ export default function SessionPage() {
     if (prevNS && st?.ns && st.status !== "D") nsWarn.push(p.name);
   }
 
-  const unmarkedParticipants = participants.filter(
-    (p) => !isDead(p, currentRound - 1) && !p.sessions[String(currentRound)]?.status
-  );
-
   const basinPurchased = basinPurchasedCount(I);
   const passageErrors = Array.from({ length: I.basinPassages }, (_, i) => I.basinPassageErrors?.[i] ?? 0);
   const bp = basinPaymentFromInputs(I, level);
@@ -76,7 +68,12 @@ export default function SessionPage() {
     regionCash: { ...defaultCirculation().regionCash, ...(rawC.regionCash || {}) },
     bankFees: { ...defaultCirculation().bankFees, ...(rawC.bankFees || {}) },
   };
-  const circ = computeCirculation({ rounds, currentRound, level });
+  const circ = computeCirculation({
+    rounds,
+    currentRound,
+    level,
+    regionLiving: livingByRegion(participants, currentRound),
+  });
   const feeTotal =
     C.bankFees.ptc * BANK_FEES.ptc +
     C.bankFees.lux * BANK_FEES.lux +
@@ -84,13 +81,22 @@ export default function SessionPage() {
     C.bankFees.transfer * BANK_FEES.transfer +
     I.guardPosts * BANK_FEES.guardPost;
 
+  // These inputs are pre-filled with the derived figure and commit on blur, so
+  // simply tabbing through the panel would otherwise stamp an override on every
+  // row and freeze it from tracking future income. Writing a value equal to the
+  // derived one instead clears the override and hands the row back to auto-tracking.
   async function commitRegionCash(region: Region, v: number) {
-    await setCirculationInput({ regionCash: { ...C.regionCash, [region]: Math.max(0, v) } });
+    const val = Math.max(0, v);
+    const next = { ...C.regionCash };
+    if (val === circ.regionDerived[region]) delete next[region];
+    else next[region] = val;
+    await setCirculationInput({ regionCash: next });
   }
   async function commitGroupCashOverride(role: HeadRole, raw: string) {
     const next = { ...C.groupCash };
-    if (raw === "") delete next[role];
-    else next[role] = Math.max(0, +raw);
+    const val = Math.max(0, +raw);
+    if (raw === "" || val === circ.groupDerived[role]) delete next[role];
+    else next[role] = val;
     await setCirculationInput({ groupCash: next });
   }
   async function commitFee(key: keyof typeof C.bankFees, v: number) {
@@ -135,18 +141,7 @@ export default function SessionPage() {
 
   async function handleClose() {
     const res = await closeSession();
-    if (!res.ok && res.needsConfirm) {
-      setCloseConfirm({ count: res.needsConfirm, names: unmarkedParticipants.slice(0, 10).map((p) => p.name) });
-      return;
-    }
     if (res.collapsed) alert("⚠ An indicator has gone below 0 — per the rules the SOCIETY COLLAPSES. Results recorded; see the Results tab.");
-    router.push(`/games/${game.id}/results`);
-  }
-
-  async function confirmCloseAnyway() {
-    setCloseConfirm(null);
-    const res2 = await closeSession({ force: true });
-    if (res2.collapsed) alert("⚠ An indicator has gone below 0 — per the rules the SOCIETY COLLAPSES. Results recorded; see the Results tab.");
     router.push(`/games/${game.id}/results`);
   }
 
@@ -196,12 +191,12 @@ export default function SessionPage() {
                       </tr>
                     );
                   }
-                  const unmarked = !st.status;
+                  // Present is the default: the coordinator marks only the
+                  // exceptions (Absent / Unemployed / Dead), so an untouched
+                  // row reads — and scores — as Present.
+                  const shown = st.status ?? "P";
                   return (
-                    <tr
-                      key={p.id}
-                      className={`border-t ${unmarked ? "border-l-2 border-l-amber-400 bg-amber-500/5" : ""}`}
-                    >
+                    <tr key={p.id} className="border-t">
                       <td className="py-1">{p.name}</td>
                       <td>{p.region}</td>
                       <td>
@@ -211,7 +206,7 @@ export default function SessionPage() {
                               key={c}
                               onClick={() => setStatus(p.id, c)}
                               className={`w-6 h-6 rounded border text-[11px] font-bold ${
-                                st.status === c ? STATUS_COLOR[c] : "bg-neutral-50 border-neutral-200 text-neutral-500"
+                                shown === c ? STATUS_COLOR[c] : "bg-neutral-50 border-neutral-200 text-neutral-500"
                               }`}
                             >
                               {STATUS_LABEL[c]}
@@ -240,7 +235,6 @@ export default function SessionPage() {
             <TallyRow label="Absentees (from roster)" value={countStatus(participants, currentRound, "A")} readOnly />
             <TallyRow label="Unemployed (from roster)" value={countStatus(participants, currentRound, "E")} readOnly />
             <TallyRow label="Deaths this session" value={newDeaths(participants, currentRound)} readOnly />
-            <TallyRow label="Unmarked" value={unmarkedParticipants.length} readOnly warn />
             <NumRow
               label="Rioters"
               value={I.rioters}
@@ -350,27 +344,31 @@ export default function SessionPage() {
               A coordinator&apos;s aid, not a hard constraint — the books not balancing never blocks closing a
               session.
             </p>
-            <h3 className="text-xs text-neutral-500 mb-1">Region cash (counted)</h3>
+            <h3 className="text-xs text-neutral-500 mb-1">
+              Region cash — everyone living there, group heads included
+            </h3>
             {REGIONS.map((r) => (
-              <NumRow key={r} label={r} value={C.regionCash[r]} min={0} onCommit={(v) => commitRegionCash(r, v)} />
+              <NumRow
+                key={r + "-" + fmt(circ.regionCash[r])}
+                label={r}
+                value={circ.regionCash[r]}
+                min={0}
+                onCommit={(v) => commitRegionCash(r, v)}
+              />
             ))}
 
-            <h3 className="text-xs text-neutral-500 mt-3 mb-1">Group treasuries — derived, override to count</h3>
+            <h3 className="text-xs text-neutral-500 mt-3 mb-1">
+              Group treasuries — the heads&apos; share of the region totals above, not extra money
+            </h3>
             {HEADROLES.map((g) => (
-              <div key={g} className="flex items-center gap-2 py-1 text-sm">
-                <span className="flex-1 text-xs text-neutral-500">
-                  {g} <span className="text-neutral-600">(derived ${fmt(circ.groupDerived[g])})</span>
-                </span>
-                <input
-                  type="number"
-                  defaultValue={C.groupCash[g] ?? ""}
-                  key={g + (C.groupCash[g] ?? "d")}
-                  placeholder={fmt(circ.groupDerived[g])}
-                  aria-label={`${g} counted treasury override`}
-                  onBlur={(e) => commitGroupCashOverride(g, e.target.value)}
-                  className="w-20 border rounded px-2 py-1 text-right text-sm"
-                />
-              </div>
+              <NumRow
+                key={g + "-" + fmt(circ.groupTreasury[g])}
+                label={g}
+                value={circ.groupTreasury[g]}
+                min={0}
+                ariaLabel={`${g} treasury`}
+                onCommit={(v) => commitGroupCashOverride(g, String(v))}
+              />
             ))}
 
             <h3 className="text-xs text-neutral-500 mt-3 mb-1">Bank fee counts</h3>
@@ -443,6 +441,10 @@ export default function SessionPage() {
               <div className="text-lg font-bold font-mono">${fmt(circ.total)}</div>
               <div className="text-[10px] uppercase text-neutral-400">In circulation</div>
               <p className="text-xs text-neutral-500 mt-1">
+                Of which group heads hold <b className="text-neutral-300">${fmt(circ.totalGroup)}</b> and ordinary
+                members <b className="text-neutral-300">${fmt(circ.totalMembers)}</b>.
+              </p>
+              <p className="text-xs text-neutral-500 mt-1">
                 Issued ${fmt(circ.issuedTotal)} − removed ${fmt(circ.removedTotal)} since Session 1 = $
                 {fmt(circ.flowTotal)}
                 {Math.abs(circ.variance) > 0.05 && (
@@ -463,26 +465,6 @@ export default function SessionPage() {
         </span>
       </div>
 
-      <ConfirmDialog
-        open={!!closeConfirm}
-        title="Unmarked participants"
-        confirmLabel="Close anyway"
-        cancelLabel="Go back"
-        onConfirm={confirmCloseAnyway}
-        onCancel={() => setCloseConfirm(null)}
-        message={
-          closeConfirm && (
-            <>
-              <b>{closeConfirm.count}</b> participant{closeConfirm.count === 1 ? "" : "s"} have no status for Session{" "}
-              {currentRound}: {closeConfirm.names.join(", ")}
-              {closeConfirm.count > closeConfirm.names.length
-                ? ` (+${closeConfirm.count - closeConfirm.names.length} more)`
-                : ""}
-              . They will be excluded from all indicator penalties. Close anyway?
-            </>
-          )
-        }
-      />
     </div>
   );
 }

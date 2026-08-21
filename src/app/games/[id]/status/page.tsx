@@ -24,8 +24,8 @@ export default function StatusPage() {
   const shareUrl =
     typeof window !== "undefined" ? `${window.location.origin}/display/${game.status_share_token}` : "";
   const code = game.player_code ?? null;
-  const circ = computeCirculation({ rounds, currentRound, level });
   const livingByReg = livingByRegion(participants, currentRound);
+  const circ = computeCirculation({ rounds, currentRound, level, regionLiving: livingByReg });
   const headName = (role: string) => {
     const id = heads[role as keyof typeof heads];
     const p = id && participants.find((x) => x.id === id);
@@ -85,10 +85,14 @@ export default function StatusPage() {
       <div className="border rounded-lg p-4 mb-4">
         <h2 className="text-xs font-semibold tracking-wide text-blue-600 uppercase mb-1">Money in Circulation</h2>
         <div className="text-2xl font-bold font-mono">${fmt(circ.total)}</div>
-        <div className="text-[10px] uppercase text-neutral-400 mb-3">Total for the society</div>
+        <div className="text-[10px] uppercase text-neutral-400 mb-1">Total for the society</div>
+        <p className="text-xs text-neutral-500 mb-3">
+          Two views of the same money, not two pots: every group head lives in a region, so the region table already
+          contains the ${fmt(circ.totalGroup)} the heads hold. Members hold the remaining ${fmt(circ.totalMembers)}.
+        </p>
         <div className="grid md:grid-cols-2 gap-4">
           <div>
-            <h3 className="text-xs text-neutral-500 mb-1">By region</h3>
+            <h3 className="text-xs text-neutral-500 mb-1">By region (everyone living there)</h3>
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="text-left text-neutral-400">
@@ -111,7 +115,7 @@ export default function StatusPage() {
             </table>
           </div>
           <div>
-            <h3 className="text-xs text-neutral-500 mb-1">By group</h3>
+            <h3 className="text-xs text-neutral-500 mb-1">By group (the heads&apos; share)</h3>
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="text-left text-neutral-400">
