@@ -1,5 +1,8 @@
 # SimSoc Coordinator Cockpit — UI/UX Handoff
 
+> **✅ STATUS: REDESIGN SHIPPED — 2026-07-24 (commit `7024148` on `main`).**
+> The visual redesign this doc scopes is **done and live**. The app is no longer "visually plain / default Tailwind" as described below — it now runs the **"Mission Control" dark operations-console theme** (Tailwind v4 `@theme` in `src/app/globals.css`, dark severity tokens + mono numerals in `src/lib/tokens.ts`, cockpit top bar in `GameNav.tsx`, radial indicator gauges on Results, dark chart grid in `StatusBoard.tsx`). Change was **visual-only** — no logic, routes, data, or copy touched. The MasMed report is intentionally kept as a white "paper" document because it is printed and read aloud. **Treat the sections below as a historical record of the pre-redesign state, not a current to-do — verify against the live code before acting on anything here.**
+
 **Purpose:** Context for a new Claude Code thread picking up UI/UX design work on the already-built, already-deployed SimSoc web app. The build-out (auth, database, all 9 game tabs, realtime sync, public projector display) is complete and working. This phase is purely about making it look and feel better — not adding features, not touching the calculation engine.
 
 Hand this file to Claude Code at the start of the new thread along with: "Read UX_HANDOFF.md, then run a design-critique on the app."
