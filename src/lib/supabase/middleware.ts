@@ -29,10 +29,13 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // BMC routes never reach here — src/proxy.ts sends them to
+  // updateBmcSession, which authenticates against BMC's own Supabase project.
+  const path = request.nextUrl.pathname;
   const isAuthRoute =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/auth") ||
-    request.nextUrl.pathname.startsWith("/display"); // public projector display, no login
+    path.startsWith("/login") ||
+    path.startsWith("/auth") ||
+    path.startsWith("/display"); // public projector display, no login
 
   if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
